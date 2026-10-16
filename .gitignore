@@ -1,0 +1,17 @@
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
+scripts/archive/
+scripts/launch_*.js
+scripts/check_*.js
+scripts/inspect_*.js
+scripts/test_*.js
+scripts/do_*.js
+scripts/fill_*.js
+scripts/read_*.js
+scripts/scan_*.js
+scripts/find_*.js
+scripts/batch_*.js
+scripts/dump_*.js
+scripts/parse_*.js
