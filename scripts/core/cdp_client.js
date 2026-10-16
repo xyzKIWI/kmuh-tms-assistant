@@ -7,6 +7,21 @@ const DEFAULT_PORT = 9222;
 
 const ANTI_BLUR_SCRIPT = `(() => {
   try {
+    // Neutralize any residual Tampermonkey userscript automation & remove its UI
+    localStorage.setItem('kmuh_tms_config', JSON.stringify({
+      speed: 1.0, antiBlur: true, autoNext: false, autoSurvey: false, autoExam: false, autoCurriculum: false, minimized: true
+    }));
+    localStorage.removeItem('kmuh_autopilot_running');
+    const cleanLegacyUI = () => {
+      document.querySelectorAll('#kmuh-tms-panel, #kmuh-tms-header, #kmuh-pending-banner').forEach(el => {
+        const root = el.closest('div[style*="fixed"]') || el;
+        root.remove();
+      });
+    };
+    cleanLegacyUI();
+    document.addEventListener('DOMContentLoaded', cleanLegacyUI);
+    setTimeout(cleanLegacyUI, 1000);
+
     Object.defineProperty(document, 'hidden', { get: () => false, configurable: true });
     Object.defineProperty(document, 'visibilityState', { get: () => 'visible', configurable: true });
     Object.defineProperty(document, 'webkitHidden', { get: () => false, configurable: true });
