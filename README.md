@@ -1,66 +1,87 @@
-# KMUH TMS Assistant 2.0 (高醫年度學程全自動管線助手)
+# KMUH TMS Assistant 2.1 (高醫體系員工學習管理系統 AI 原生全自動引擎)
 
-專為高醫醫療體系（附院、岡山、小港、大同、旗津）同仁打造的 **100% Agent-Native（免外掛、免 Tampermonkey）** 院內繼續教育訓練學程自動化解決方案。
-
-透過 **Chrome DevTools Protocol (CDP, Port 9222)** 由 AI Agent（Gemini / Antigravity / Codex）直接控制瀏覽器底層，自動完成：**學程缺額精算 ➔ 高 CP 值短課遴選與報名 ➔ 多分頁背景 1.0x 合規掛機 ➔ LLM 隨堂測驗 100 分交卷 ➔ 5 星滿意度問卷送出 ➔ 完訓秒級關閉分頁**。
+**100% Agent-Native、零瀏覽器外掛（No Tampermonkey Required）** 的高醫 TMS（`https://tms.kmuh.org.tw/`）全自動修課、學程盤點、調訓完訓、背景防失焦掛機、LLM 隨堂測驗滿分作答與滿意度問卷結案引擎。
 
 ---
 
-## 核心特色
+## 核心特色 (v2.1 Universal Architecture)
 
-1. **零擴充套件依賴（No Tampermonkey）**：
-   - 不需在瀏覽器安裝任何油猴外掛，完全透過 CDP `Page.addScriptToEvaluateOnNewDocument` 於網頁載入前底層注入防失焦（`document.hidden = false`）。
-   - 不注入任何前端懸浮面板，避免與 FormosaSoft / Bootstrap Modal 發生點擊衝突。
-2. **100% 合規心跳 + 多分頁並行**：
-   - 遵循 FormosaSoft 後台「Session 累計在線心跳秒數」稽核機制，維持 **1.0x 原生心跳速度**，同時開啟 3~4 個背景分頁並行播放，安全且高效。
-3. **LLM 智能滿分答題**：
-   - 隨堂測驗直接由 Agent 抽取題幹與選項，透過醫學與法規模型推理作答，精準點擊 Bootbox 二次確認彈窗，達成 100% 滿分通過率。
-4. **完訓自動結算與物理級關頁**：
-   - 監控畫面右上角累計時間（`姓名: MM:SS`），達標瞬間點擊 `.fs-endReading`（結束閱讀）入帳，並立即呼叫 CDP `GET /json/close/{id}` 物理關閉分頁，絕不殘留多餘分頁。
+- **零外掛依賴 (Zero Browser Extensions)**：無須安裝 Tampermonkey 或任何 `.user.js` 腳本，直接由 AI Agent 透過 Chrome DevTools Protocol (`CDP Port 9222`) 原生操控，並內建自動停用／移除頁面上殘留舊版插件面板之防護。
+- **全場景通用編排 (`core/course_runner.js`)**：
+  1. **任意學程自動完訓 (`run-program`)**：支援「積分制」（如 `#10713` 院內繼續教育 30 積分）與「小時制」（如 `#10667` 師資培育 5 小時）等任何學程，自動過濾院區／職類限制並挑課完訓。
+  2. **院方特殊調訓／關鍵字完訓 (`run-keyword` / `run-course`)**：如「家庭暴力暨性侵害防治」（`83249`、`83285`）等強制調訓課程，一鍵完成未讀影音、問卷與測驗。
+  3. **個人自選待修清單全清 (`run-pending`)**：你自己去網站點選報名放入「待修課程 (`/course/mine`)」的課，直接一鍵掃描並全自動跑完。
+- **多線並行 1.0x 合規播放 + 完訓自動關頁**：遵守 1.0x 原生心跳，達標秒點「結束閱讀 (`.fs-endReading`)」並透過 `GET /json/close/{id}` **物理關閉分頁**。
 
 ---
 
-## 架構與模組 (`scripts/`)
+## 模組架構
 
 ```text
 kmuh-tms-assistant/
-├── SKILL.md                      # AI Agent 技能規範與避坑指南
-├── README.md                     # 專案說明與 CLI 操作手冊
+├── SKILL.md                      # AI Agent 技能定義與全場景標準作業程序 (SOP)
+├── README.md                     # 專案說明文件
 └── scripts/
     ├── tms_pilot.js              # 統一 CLI 主控入口
     ├── core/
-    │   ├── cdp_client.js         # 底層 CDP 連線、分頁控制與防失焦注入
-    │   ├── program_auditor.js    # 學程稽核、缺額精算、自動選課與單元抽取
-    │   ├── media_daemon.js       # 多線並行 1.0x 影音掛機守護與達標自關
-    │   ├── exam_engine.js        # 隨堂測驗題目抽取、LLM 作答與交卷引擎
-    │   └── survey_engine.js      # 5 星滿意度問卷自動填寫與送出引擎
-    └── kmuh_tms_console.js       # 院內公用電腦無 CDP 時之 F12 應急腳本
+    │   ├── cdp_client.js         # CDP WebSocket 通訊、Page.addScriptToEvaluateOnNewDocument 防失焦與自動關頁
+    │   ├── program_auditor.js    # 通用學程缺額精算 (積分/小時)、待修與調訓掃描、關鍵字/分類線上課爬蟲
+    │   ├── course_runner.js      # 單課 / 多課 / 學程 / 關鍵字 一條龍全自動完訓編排器
+    │   ├── media_daemon.js       # 多分頁並行 1.0x 原生心跳掛機、防閒置彈窗攔截、達標結算並關閉分頁
+    │   ├── exam_engine.js        # 考題 DOM 抽取、LLM 推理答題、Bootbox 確認交卷與自動關頁
+    │   └── survey_engine.js      # 課後問卷全自動 5 星非常滿意 + 醫師職類勾選送出與自動關頁
+    └── legacy/                   # 舊版參考歸檔
 ```
 
 ---
 
-## 快速開始 (Quick Start)
+## 四大常見使用情境 (Quick Start)
 
-### 1. 啟動瀏覽器偵錯埠 (Port 9222)
+> **註**：以下指令中的學程編號（如 `10713`、`10667`）與課程編號（如 `83249`）皆可替換為**任何你要修的學程或課程網址／ID**。
+
+### 前置準備：啟動瀏覽器偵錯埠 (Port 9222)
 啟動 Comet 或 Chrome 並登入 `https://tms.kmuh.org.tw/`：
 ```powershell
 "C:\Users\User\AppData\Local\Perplexity\Comet\Application\comet.exe" --remote-debugging-port=9222
 ```
 
-### 2. 使用 CLI 或交由 AI Agent 全自動執行
+### 情境 A：跑完「任意年度／非年度學程」（如 `#10667` 師資培育學程、`#10713` 年度積分學程）
 ```powershell
-# 1. 盤點年度學程 (預設 #10713 高醫岡山 115 學年度學程)
-node scripts/tms_pilot.js audit 10713
+# 自動盤點學程缺額（支援積分制與小時制）、自動挑課報名、跑完影片+問卷+測驗並關閉分頁
+node scripts/tms_pilot.js run-program 10667
+node scripts/tms_pilot.js run-program https://tms.kmuh.org.tw/program/showMy/10713
+```
 
-# 2. 自動報名指定課程並解析所有教材/測驗/問卷網址
-node scripts/tms_pilot.js enroll 84212
+### 情境 B：跑完「特殊專案調訓課程」（如家暴／性侵防治、急救、感控調訓）
+```powershell
+# 方式 1：直接指定調訓課程編號或網址（可一次給多門課同時並行跑！）
+node scripts/tms_pilot.js run-course 83249 83285
 
-# 3. 啟動背景 1.0x 影音掛機 (達標自動點結束閱讀並關閉分頁)
-node scripts/tms_pilot.js watch 124703 11 "16-單層防護裝備穿脫"
+# 方式 2：用關鍵字自動搜尋全院未完成的線上課並一條龍跑完
+node scripts/tms_pilot.js run-keyword "家庭暴力"
+```
 
-# 4. 自動完成 5 星滿意度問卷並關閉分頁
-node scripts/tms_pilot.js poll https://tms.kmuh.org.tw/course/82242/poll/12728
+### 情境 C：你自己先在網站上選好課，交給引擎把「待修清單」全部跑完
+```powershell
+# 先查看目前帳號下「待修課程」與「被調訓必修課」清單
+node scripts/tms_pilot.js scan
 
-# 5. 自動完成隨堂測驗並關閉分頁
+# 一鍵把所有待修與被調訓課程全自動跑完（自動略過已完成單元）
+node scripts/tms_pilot.js run-pending
+```
+
+### 情境 D：單一單元微調指令（進階／單步控制）
+```powershell
+# 僅盤點學程狀態
+node scripts/tms_pilot.js audit 10667
+
+# 僅搜尋關鍵字或分類線上課程
+node scripts/tms_pilot.js search "性侵害"
+
+# 單獨掛機某支影片 (mediaId, 目標分鐘數, 顯示名稱)
+node scripts/tms_pilot.js watch 122234 66 "家暴通報知能"
+
+# 單獨填寫問卷或測驗
+node scripts/tms_pilot.js poll https://tms.kmuh.org.tw/course/83249/poll/13049
 node scripts/tms_pilot.js exam https://tms.kmuh.org.tw/course/80062/exam/xxxx
 ```
