@@ -14,7 +14,7 @@ const {
 } = require('./program_auditor');
 const { runMediaBatch, runMediaPool } = require('./media_daemon');
 const { completeSurvey } = require('./survey_engine');
-const { extractExamQuestions, submitExamAnswers } = require('./exam_engine');
+const { extractExamQuestions, submitExamAnswers, takeExamUntilPassed } = require('./exam_engine');
 
 // Keywords in course titles that indicate non-physician role restrictions
 const EXCLUDED_TITLE_KEYWORDS = [
@@ -65,9 +65,8 @@ async function completeCourseAssessments(cid) {
       console.log(`[CourseRunner] Submitting 5-star survey for [${cid}]: ${unit.href}`);
       await completeSurvey(unit.href);
     } else if (unit.type === 'exam') {
-      console.log(`[CourseRunner] Extracting & submitting exam for [${cid}]: ${unit.href}`);
-      const { tab } = await extractExamQuestions(unit.href);
-      await submitExamAnswers(tab);
+      console.log(`[CourseRunner] Running exam until passed for [${cid}]: ${unit.href}`);
+      await takeExamUntilPassed(unit.href);
     }
   }
 

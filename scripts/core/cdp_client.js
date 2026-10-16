@@ -98,10 +98,6 @@ async function evalTab(wsUrl, expression, timeoutMs = 8000) {
 
 async function injectAntiBlur(wsUrl) {
   try {
-    await sendCdpCommand(wsUrl, 'Page.enable');
-    await sendCdpCommand(wsUrl, 'Page.addScriptToEvaluateOnNewDocument', {
-      source: ANTI_BLUR_SCRIPT
-    });
     await evalTab(wsUrl, ANTI_BLUR_SCRIPT);
   } catch (e) {}
 }
