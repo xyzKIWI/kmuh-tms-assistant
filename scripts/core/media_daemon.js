@@ -123,32 +123,55 @@ async function checkAndSettleTask(task) {
   return false;
 }
 
-async function runMediaBatch(tasks, pollIntervalMs = 15000) {
-  for (const task of tasks) {
-    await setupMediaTab(task);
+async function runMediaPool(tasks, maxConcurrency = 6, pollIntervalMs = 15000, onMediaDone = null) {
+  const pending = [...tasks];
+  const active = [];
+
+  while (active.length < maxConcurrency && pending.length > 0) {
+    const t = pending.shift();
+    await setupMediaTab(t);
+    active.push(t);
   }
 
-  while (true) {
+  while (active.length > 0) {
     await new Promise((r) => setTimeout(r, pollIntervalMs));
-    let allDone = true;
-    for (const task of tasks) {
+    for (let i = active.length - 1; i >= 0; i--) {
+      const task = active[i];
+      let done = false;
       try {
-        const done = await checkAndSettleTask(task);
-        if (!done) allDone = false;
+        done = await checkAndSettleTask(task);
       } catch (e) {
-        allDone = false;
+        // retry on next tick
+      }
+      if (done) {
+        active.splice(i, 1);
+        if (onMediaDone) {
+          try {
+            await onMediaDone(task);
+          } catch (e) {
+            console.error('[MediaPool] Callback error:', e);
+          }
+        }
+        if (pending.length > 0 && active.length < maxConcurrency) {
+          const next = pending.shift();
+          await setupMediaTab(next);
+          active.push(next);
+        }
       }
     }
-    if (allDone) {
-      console.log('🎉 [MediaDaemon] All media tasks in batch completed and closed!');
-      break;
-    }
   }
+  console.log('🎉 [MediaDaemon] All media tasks in pool completed and closed!');
+}
+
+async function runMediaBatch(tasks, pollIntervalMs = 15000) {
+  return await runMediaPool(tasks, tasks.length, pollIntervalMs);
 }
 
 module.exports = {
   parseTimeToSeconds,
   setupMediaTab,
   checkAndSettleTask,
-  runMediaBatch
+  runMediaBatch,
+  runMediaPool
 };
+

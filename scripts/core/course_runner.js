@@ -12,7 +12,7 @@ const {
   searchOnlineCourses,
   enrollAndExtractCourse
 } = require('./program_auditor');
-const { runMediaBatch } = require('./media_daemon');
+const { runMediaBatch, runMediaPool } = require('./media_daemon');
 const { completeSurvey } = require('./survey_engine');
 const { extractExamQuestions, submitExamAnswers } = require('./exam_engine');
 
@@ -54,6 +54,30 @@ async function settleZeroMinuteMedia(mediaId, title) {
   }
 }
 
+async function completeCourseAssessments(cid) {
+  let info = await enrollAndExtractCourse(cid);
+  if (info.isCompleted) return info;
+
+  for (const unit of info.units || []) {
+    if (unit.passed) continue;
+
+    if (unit.type === 'poll') {
+      console.log(`[CourseRunner] Submitting 5-star survey for [${cid}]: ${unit.href}`);
+      await completeSurvey(unit.href);
+    } else if (unit.type === 'exam') {
+      console.log(`[CourseRunner] Extracting & submitting exam for [${cid}]: ${unit.href}`);
+      const { tab } = await extractExamQuestions(unit.href);
+      await submitExamAnswers(tab);
+    }
+  }
+
+  info = await enrollAndExtractCourse(cid);
+  if (info.isCompleted) {
+    console.log(`🎯 [CourseRunner] Course [${cid}] ${info.title} is now 100% COMPLETED!`);
+  }
+  return info;
+}
+
 async function runCoursesEndToEnd(courseIds, { maxConcurrency = 6 } = {}) {
   const cleanIds = Array.from(
     new Set(
@@ -73,6 +97,7 @@ async function runCoursesEndToEnd(courseIds, { maxConcurrency = 6 } = {}) {
   );
 
   const mediaQueue = [];
+  const mediaByCourse = new Map();
 
   // Phase 1: Enroll & inspect units
   for (const cid of cleanIds) {
@@ -92,6 +117,7 @@ async function runCoursesEndToEnd(courseIds, { maxConcurrency = 6 } = {}) {
       continue;
     }
 
+    let hasMediaPending = false;
     for (const unit of info.units) {
       if (unit.passed) continue;
 
@@ -99,53 +125,46 @@ async function runCoursesEndToEnd(courseIds, { maxConcurrency = 6 } = {}) {
         if (!unit.requiredMin || unit.requiredMin <= 0) {
           await settleZeroMinuteMedia(unit.mediaId, `${info.title} - ${unit.title}`);
         } else {
-          mediaQueue.push({
+          hasMediaPending = true;
+          const task = {
             courseId: cid,
             mediaId: unit.mediaId,
             targetMin: unit.requiredMin,
             title: `[${cid}] ${info.title.slice(0, 16)}`
-          });
+          };
+          mediaQueue.push(task);
+          if (!mediaByCourse.has(cid)) mediaByCourse.set(cid, []);
+          mediaByCourse.get(cid).push(task);
         }
       }
     }
-  }
 
-  // Phase 2: Parallel 1.0x media playback & auto-close (in chunks of maxConcurrency)
-  if (mediaQueue.length > 0) {
-    for (let i = 0; i < mediaQueue.length; i += maxConcurrency) {
-      const batch = mediaQueue.slice(i, i + maxConcurrency);
-      console.log(
-        `[CourseRunner] Launching MediaDaemon batch (${i + 1}~${i + batch.length} of ${
-          mediaQueue.length
-        })...`
-      );
-      await runMediaBatch(batch);
+    if (!hasMediaPending) {
+      await completeCourseAssessments(cid);
     }
   }
 
-  // Phase 3: Complete unlocked surveys & exams
+  // Phase 2: Parallel 1.0x media playback with sliding window pool & immediate assessment
+  if (mediaQueue.length > 0) {
+    console.log(
+      `[CourseRunner] Launching MediaDaemon sliding pool (${mediaQueue.length} media tasks, concurrency ${maxConcurrency})...`
+    );
+    await runMediaPool(mediaQueue, maxConcurrency, 15000, async (finishedTask) => {
+      const cid = finishedTask.courseId;
+      if (cid && mediaByCourse.has(cid)) {
+        const remainingForCourse = mediaByCourse.get(cid).filter((t) => !t.done);
+        if (remainingForCourse.length === 0) {
+          console.log(`[CourseRunner] All media finished for course [${cid}]! Resolving assessments...`);
+          await completeCourseAssessments(cid);
+        }
+      }
+    });
+  }
+
+  // Phase 3: Final sweep & verification
   const results = [];
   for (const cid of cleanIds) {
-    let info = await enrollAndExtractCourse(cid);
-    if (info.isCompleted) {
-      results.push({ courseId: cid, title: info.title, isCompleted: true });
-      continue;
-    }
-
-    for (const unit of info.units || []) {
-      if (unit.passed) continue;
-
-      if (unit.type === 'poll') {
-        console.log(`[CourseRunner] Submitting 5-star survey for [${cid}]: ${unit.href}`);
-        await completeSurvey(unit.href);
-      } else if (unit.type === 'exam') {
-        console.log(`[CourseRunner] Extracting & submitting exam for [${cid}]: ${unit.href}`);
-        const { tab } = await extractExamQuestions(unit.href);
-        await submitExamAnswers(tab);
-      }
-    }
-
-    info = await enrollAndExtractCourse(cid);
+    const info = await completeCourseAssessments(cid);
     results.push({
       courseId: cid,
       title: info.title,
