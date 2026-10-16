@@ -38,7 +38,13 @@ async function getTabs(port = DEFAULT_PORT) {
 
 async function closeTab(tabId, port = DEFAULT_PORT) {
   try {
-    // CDP requires HTTP GET to reliably close target tabs
+    const tabs = await getTabs(port);
+    const pages = tabs.filter(t => t.type === 'page');
+    // Guard: If closing this tab would leave 0 pages, open a persistent home tab first
+    if (pages.length <= 1 && pages.some(p => p.id === tabId)) {
+      await fetch(`http://127.0.0.1:${port}/json/new?https://tms.kmuh.org.tw/`, { method: 'PUT' });
+      await new Promise(r => setTimeout(r, 1000));
+    }
     await fetch(`http://127.0.0.1:${port}/json/close/${tabId}`);
     return true;
   } catch (e) {
@@ -87,14 +93,19 @@ function sendCdpCommand(wsUrl, method, params = {}, timeoutMs = 8000) {
 }
 
 async function evalTab(wsUrl, expression, timeoutMs = 8000) {
-  const res = await sendCdpCommand(
-    wsUrl,
-    'Runtime.evaluate',
-    { expression, returnByValue: true, awaitPromise: true },
-    timeoutMs
-  );
-  return res?.result?.value;
+  try {
+    const res = await sendCdpCommand(
+      wsUrl,
+      'Runtime.evaluate',
+      { expression, returnByValue: true, awaitPromise: true },
+      timeoutMs
+    );
+    return res?.result?.value;
+  } catch (err) {
+    return null;
+  }
 }
+
 
 async function injectAntiBlur(wsUrl) {
   try {
