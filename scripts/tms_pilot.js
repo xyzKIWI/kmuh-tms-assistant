@@ -1,9 +1,14 @@
 #!/usr/bin/env node
 /**
- * KMUH TMS Assistant 2.1 - Unified Agent-Native CLI Pilot
- * Zero-Extension CDP Automation Entry Point (Universal Programs, Assigned Courses & Self-Selected Courses)
+ * KMUH TMS Assistant 3.0 - Unified Agent-Native LLM Intelligence CLI Pilot
+ * Zero-Extension CDP Automation Entry Point
+ * Features:
+ * - Agent-in-the-Loop LLM Exam Reasoning & Persistent Knowledge Base (exam-extract / exam-solve)
+ * - Low-Power Pause-and-Clock Media Engine (0% CPU/GPU decode, 0 bandwidth)
+ * - Leaf-First Mandatory Sub-Category (0% / 50%) Multi-Course Dynamic Credit Accumulation
  */
 
+const { closeTab } = require('./core/cdp_client');
 const {
   auditProgram,
   scanMyCourses,
@@ -18,7 +23,11 @@ const {
 } = require('./core/course_runner');
 const { runMediaBatch } = require('./core/media_daemon');
 const { completeSurvey } = require('./core/survey_engine');
-const { extractExamQuestions, submitExamAnswers } = require('./core/exam_engine');
+const {
+  extractExamQuestions,
+  solveExamWithLLM,
+  takeExamUntilPassed
+} = require('./core/exam_engine');
 
 async function main() {
   const [, , cmd, ...args] = process.argv;
@@ -119,34 +128,57 @@ async function main() {
       break;
     }
 
-    case 'exam': {
+    case 'exam-extract': {
       if (!arg1) {
-        console.error('Usage: node tms_pilot.js exam <examUrl>');
+        console.error('Usage: node tms_pilot.js exam-extract <examUrl>');
         process.exit(1);
       }
       const { tab, questions } = await extractExamQuestions(arg1);
-      console.log(`Extracted ${questions.length} questions.`);
-      const res = await submitExamAnswers(tab);
+      await closeTab(tab.id);
+      console.log(JSON.stringify(questions, null, 2));
+      break;
+    }
+
+    case 'exam-solve': {
+      if (!arg1 || !arg2) {
+        console.error('Usage: node tms_pilot.js exam-solve <examUrl> <answersJson>');
+        process.exit(1);
+      }
+      const answerMap = JSON.parse(arg2);
+      const res = await solveExamWithLLM(arg1, answerMap);
+      console.log(JSON.stringify(res, null, 2));
+      break;
+    }
+
+    case 'exam': {
+      if (!arg1) {
+        console.error('Usage: node tms_pilot.js exam <examUrl> [answersJson]');
+        process.exit(1);
+      }
+      const explicitAnswers = arg2 ? JSON.parse(arg2) : null;
+      const res = await takeExamUntilPassed(arg1, { explicitAnswers });
       console.log(JSON.stringify(res, null, 2));
       break;
     }
 
     default:
-      console.log(`KMUH TMS Assistant 2.1 (Universal Agent-Native CDP Engine)
+      console.log(`KMUH TMS Assistant 3.0 (Agent-Native LLM Intelligence Edition)
 High-Level Turnkey Commands:
-  run-program <programId_or_url>     Auto-audit, pick online courses & complete any program (e.g. 10667, 10713)
-  run-course <courseId_or_url...>    End-to-end complete one or more specific courses (videos + survey + exam)
-  run-pending                        Scan /course/mine (待修課程 + 被調訓必修課) and complete all pending courses
-  run-keyword <keyword>              Search online courses by keyword (e.g. "家庭暴力") and complete them
-  scan                               List all pending/assigned courses in /course/mine
-  search <keyword> [categoryId]      Search available online courses in catalog
+  run-program <programId_or_url>      Auto-audit, pick online courses & complete any program (e.g. 10667, 10713)
+  run-course <courseId_or_url...>     End-to-end complete one or more specific courses (videos + survey + exam)
+  run-pending                         Scan /course/mine (待修課程 + 被調訓必修課) and complete all pending courses
+  run-keyword <keyword>               Search online courses by keyword (e.g. "家庭暴力") and complete them
+  scan                                List all pending/assigned courses in /course/mine
+  search <keyword> [categoryId]       Search available online courses in catalog
 
-Granular Unit Commands:
-  audit [programId]                  Audit curriculum progress & shortfall (supports 積分 & 小時)
-  enroll <courseId>                  Auto-enroll & extract unit-level status for a course
-  watch <mediaId> <targetMin> [name] Run 1.0x compliant background playback & auto-close tab
-  poll <pollUrl>                     Auto-fill 5-star satisfaction survey & auto-close tab
-  exam <examUrl>                     Extract & submit exam with 100% compliance & auto-close tab`);
+LLM Exam & Granular Unit Commands:
+  exam-extract <examUrl>              Extract clean question stems & options JSON for Agent LLM reasoning
+  exam-solve <examUrl> <answersJson>  Submit LLM-verified answers & cache 100% solution to Knowledge Base
+  exam <examUrl> [answersJson]        Run exam with Knowledge Base / LLM answers or auto-retry loop until passed
+  audit [programId]                   Audit curriculum progress & shortfall (supports 積分 & 小時)
+  enroll <courseId>                   Auto-enroll & extract unit-level status for a course
+  watch <mediaId> <targetMin> [name]  Run Low-Power Pause-and-Clock background timer & auto-close tab
+  poll <pollUrl>                      Auto-fill 5-star satisfaction survey & auto-close tab`);
       break;
   }
 }

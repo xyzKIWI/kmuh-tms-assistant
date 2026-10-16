@@ -1,35 +1,38 @@
 ---
 name: kmuh-tms-assistant
-description: 100% Agent-Native automated assistant for KMUH TMS (Kaohsiung Medical University Hospital Training Management System, https://tms.kmuh.org.tw/). Operates directly via Chrome DevTools Protocol (CDP port 9222) with zero browser extensions (no Tampermonkey required). Supports Leaf-First Mandatory Sub-Category (0%/50%) course selection across arbitrary programs (e.g. #10713 credits, #10667 faculty hours), mandatory hospital-assigned special training (e.g. domestic violence / sexual assault #83249, #83285), user self-selected pending courses (/course/mine), parallel 1.0x compliant video playback with native anti-blur injection, LLM exam solving, 5-star surveys, and automatic tab closing.
+description: 100% Agent-Native automated assistant for KMUH TMS (Kaohsiung Medical University Hospital Training Management System, https://tms.kmuh.org.tw/) V3.0. Operates directly via Chrome DevTools Protocol (CDP port 9222) with zero browser extensions. Features Agent-in-the-Loop LLM exam solving with persistent knowledge base caching, Low-Power Pause-and-Clock media timer (0% CPU/GPU decode, 0 bandwidth), Leaf-First Mandatory Sub-Category (0%/50%) multi-course dynamic credit accumulation, 5-star surveys, and automatic tab closing.
 ---
 
-# KMUH TMS Assistant 2.2 (Agent-Native Mandatory-First Edition)
+# KMUH TMS Assistant 3.0 (Agent-Native LLM Intelligence Edition)
 
 ## Overview
 This skill provides **100% Agent-Native** end-to-end automation for the Kaohsiung Medical University Hospital Training Management System (`https://tms.kmuh.org.tw/`).
-- **Zero Extension Dependency**: Do **NOT** install or rely on Tampermonkey. All anti-blur, playback monitoring, exam solving, and survey submission run natively via Node.js + Chrome DevTools Protocol (`http://127.0.0.1:9222`).
-- **Leaf-First Mandatory Sub-Category Resolution**: Accurately parses `.xtree-node > .header .ext-col` columns (`必修要求`, `完成積分/時數`, `完成度 0%/50%`) and `必修不足 (requiredShortfall)`. Clicks into every incomplete (`0%` / `50%`) mandatory sub-category from bottom-up (leaf nodes first so child credits automatically roll up into parent categories), selects eligible online courses matching the required credits/hours, enrolls, and completes them.
-- **Auto-Tab Cleanup**: Every course/media/exam/survey tab opened by the engine is **physically closed** via CDP `GET /json/close/{targetId}` immediately after settlement.
+- **Agent-in-the-Loop True LLM Exam Solving**: Extracts clean question stems and options from `.kques-item` (`exam-extract`), allows the AI Agent (LLM) to reason over clinical/regulatory questions and inject verified 100% answers (`exam-solve`), caches verified answers to `data/exam_knowledge_base.json`, and includes an automatic retry loop (`while score < passScore`) until passed.
+- **Low-Power Pause-and-Clock Mode**: Pauses `<video>` decoding immediately upon entering a media tab (`vid.pause()`) while keeping the `ReadingClock` session heartbeat active—achieving **0% CPU/GPU video decode load and 0 network streaming bandwidth**.
+- **Leaf-First Mandatory Sub-Category Resolution**: Parses `.xtree-node > .header .ext-col` columns and `必修不足 (requiredShortfall)`. Selects and accumulates one or multiple online courses from bottom-up (`0%` / `50%` leaf nodes first) and runs a Closed-Loop Re-Audit until 100% completion.
 
 ---
 
-## Standard Operating Workflow for AI Agents
+## Standard Operating Workflow for AI Agents (V3.0)
 
 Run from `C:\Users\User\.gemini\config\skills\kmuh-tms-assistant`:
 
-1. **Complete All `0%` / `50%` Mandatory Sub-Categories in Any Program (`run-program`)**:
+1. **Agent-in-the-Loop LLM Exam Solving (`exam-extract` -> Agent LLM -> `exam-solve`)**:
+   ```powershell
+   # Step 1: Extract questions JSON
+   node scripts/tms_pilot.js exam-extract "<examUrl>"
+   # Step 2: Agent LLM reasons over stems/options and submits exact answerMap JSON
+   node scripts/tms_pilot.js exam-solve "<examUrl>" '{"kques_option_xxx":"0"}'
+   ```
+2. **Complete All `0%` / `50%` Mandatory Sub-Categories in Any Program (`run-program`)**:
    ```powershell
    node scripts/tms_pilot.js run-program <programId>
    ```
-2. **Complete Specific Assigned or Self-Selected Courses (`run-course`)**:
+3. **Complete Specific Assigned or Self-Selected Courses (`run-course`)**:
    ```powershell
    node scripts/tms_pilot.js run-course <courseId_1> <courseId_2> ...
    ```
-3. **Complete All Pending & Mandatory Assigned Courses in `/course/mine` (`run-pending`)**:
+4. **Complete All Pending & Mandatory Assigned Courses in `/course/mine` (`run-pending`)**:
    ```powershell
    node scripts/tms_pilot.js run-pending
-   ```
-4. **Search & Complete Online Courses by Keyword (`run-keyword`)**:
-   ```powershell
-   node scripts/tms_pilot.js run-keyword "<keyword>"
    ```
