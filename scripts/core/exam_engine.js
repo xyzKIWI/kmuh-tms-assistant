@@ -44,25 +44,29 @@ async function extractExamQuestions(examUrl) {
   const questions = await evalTab(
     wsUrl,
     `(() => {
-      const radioGroups = {};
-      document.querySelectorAll('input[type="radio"], input[type="checkbox"]').forEach(input => {
-        if (!input.name) return;
-        if (!radioGroups[input.name]) {
-          const container = input.closest('.panel, .question-item, li, tr, div.form-group') || input.parentElement?.parentElement;
-          radioGroups[input.name] = {
+      const items = Array.from(document.querySelectorAll('.kques-item, .panel, .fs-question, tr')).filter(
+        el => el.querySelector('input[type="radio"], input[type="checkbox"]')
+      );
+      return items.map(item => {
+        const clone = item.cloneNode(true);
+        clone.querySelectorAll('.option-container, ul, table, .option-item').forEach(el => el.remove());
+        const stem = clone.innerText.replace(/\\s+/g, ' ').replace(/\\d+\\s*分$/, '').trim();
+        const inputs = Array.from(item.querySelectorAll('input[type="radio"], input[type="checkbox"]'));
+        const options = inputs.map(input => {
+          const label = input.closest('label, .option-item') || input.parentElement;
+          return {
             name: input.name,
-            type: input.type,
-            stem: container ? container.innerText.replace(/\\s+/g, ' ').trim().slice(0, 400) : '',
-            options: []
+            value: input.value,
+            text: label ? label.innerText.replace(/\\s+/g, ' ').trim() : input.value
           };
-        }
-        const label = input.closest('label') || input.parentElement;
-        radioGroups[input.name].options.push({
-          value: input.value,
-          text: label ? label.innerText.replace(/\\s+/g, ' ').trim() : input.value
         });
-      });
-      return Object.values(radioGroups);
+        return {
+          name: inputs[0]?.name,
+          type: inputs[0]?.type,
+          stem,
+          options
+        };
+      }).filter(q => q.name && q.options.length > 0);
     })()`
   );
 
@@ -113,37 +117,67 @@ async function takeExamUntilPassed(examUrl, { maxRetries = 5, defaultPassScore =
         await new Promise((r) => setTimeout(r, 3000));
       }
 
-      // Step 2: Fill answers with progressive attempt rotation
+      // Step 2: Fill answers with semantic heuristics and attempt rotation
       const answerRes = await evalTab(
         wsUrl,
         `((attemptNum) => {
-          const groups = {};
-          document.querySelectorAll('input[type="radio"], input[type="checkbox"]').forEach(input => {
-            if (!input.name) return;
-            if (!groups[input.name]) groups[input.name] = [];
-            groups[input.name].push(input);
-          });
+          const items = Array.from(document.querySelectorAll('.kques-item, .panel, .fs-question, tr')).filter(
+            el => el.querySelector('input[type="radio"], input[type="checkbox"]')
+          );
 
           let answered = 0;
-          for (const [name, inputs] of Object.entries(groups)) {
+          for (const item of items) {
+            const inputs = Array.from(item.querySelectorAll('input[type="radio"], input[type="checkbox"]'));
+            if (inputs.length === 0) continue;
+
+            const clone = item.cloneNode(true);
+            clone.querySelectorAll('.option-container, ul, table, .option-item').forEach(el => el.remove());
+            const stem = clone.innerText.replace(/\\s+/g, ' ').trim();
+            const isTF = inputs.length === 2 && inputs.some(i => /是|對|O|否|非|X/i.test(i.closest('label, .option-item')?.innerText || ''));
+            const isNegative = /不屬於|何者錯誤|何者非|不包含|不應|不宜/.test(stem);
+
             let chosen = null;
-            const isTF = inputs.length === 2 && inputs.some(i => /是|對|O|否|非|X/i.test(i.closest('label')?.innerText || ''));
 
             if (attemptNum === 1) {
-              // Attempt 1: High-probability compliance bias
-              chosen =
-                inputs.find(i => /以上皆是|皆正確|皆對/.test(i.closest('label')?.innerText || i.parentElement?.innerText || '')) ||
-                inputs.find(i => /^1$|^true$|^O$|是|對/.test((i.closest('label')?.innerText || '').trim())) ||
-                inputs[0];
-            } else if (attemptNum === 2) {
-              // Attempt 2: Invert True/False, shift Multiple-Choice
               if (isTF) {
-                chosen = inputs.find(i => /否|非|X|^0$|^false$/i.test((i.closest('label')?.innerText || '').trim())) || inputs[1] || inputs[0];
+                if (isNegative) {
+                  chosen = inputs.find(i => /否|非|X|^0$|^false$/i.test((i.closest('label, .option-item')?.innerText || '').trim())) || inputs[0];
+                } else {
+                  chosen = inputs.find(i => /^1$|^true$|^O$|是|對/i.test((i.closest('label, .option-item')?.innerText || '').trim())) || inputs[0];
+                }
+              } else {
+                // Multiple Choice:
+                // 1. Prefer "以上皆是" / "皆正確"
+                chosen = inputs.find(i => /以上皆是|皆正確|皆對/.test(i.closest('label, .option-item')?.innerText || ''));
+                // 2. High-probability domain keywords
+                if (!chosen) {
+                  if (/污染/.test(stem)) chosen = inputs.find(i => /再次用|訓練/i.test(i.closest('label, .option-item')?.innerText || ''));
+                  else if (/偏見/.test(stem)) chosen = inputs.find(i => /放大|差異/i.test(i.closest('label, .option-item')?.innerText || ''));
+                  else if (/不可解釋/.test(stem)) chosen = inputs.find(i => /驗證困難/i.test(i.closest('label, .option-item')?.innerText || ''));
+                  else if (/影像|高仿/.test(stem)) chosen = inputs.find(i => /誤導|偽造/i.test(i.closest('label, .option-item')?.innerText || ''));
+                  else if (/能力下降|思維/.test(stem)) chosen = inputs.find(i => /批判性/i.test(i.closest('label, .option-item')?.innerText || ''));
+                  else if (/治理/.test(stem)) chosen = inputs.find(i => /溯源/i.test(i.closest('label, .option-item')?.innerText || ''));
+                  else if (/差分隱私/.test(stem)) chosen = inputs.find(i => /保護.*隱私/i.test(i.closest('label, .option-item')?.innerText || ''));
+                  else if (/聯邦學習/.test(stem)) chosen = inputs.find(i => /不離開|本地/i.test(i.closest('label, .option-item')?.innerText || ''));
+                  else if (/責任/.test(stem)) chosen = inputs.find(i => /醫師/i.test(i.closest('label, .option-item')?.innerText || ''));
+                  else if (/知情同意/.test(stem)) chosen = inputs.find(i => /說明.*限制/i.test(i.closest('label, .option-item')?.innerText || ''));
+                }
+                // 3. Fallback: longest option (most comprehensive clinical answer)
+                if (!chosen) {
+                  chosen = inputs.reduce((longest, curr) => {
+                    const text = curr.closest('label, .option-item')?.innerText || '';
+                    const longText = longest ? (longest.closest('label, .option-item')?.innerText || '') : '';
+                    return text.length > longText.length ? curr : longest;
+                  }, inputs[0]);
+                }
+              }
+            } else if (attemptNum === 2) {
+              if (isTF) {
+                chosen = inputs.find(i => /否|非|X|^0$|^false$/i.test((i.closest('label, .option-item')?.innerText || '').trim())) || inputs[1] || inputs[0];
               } else {
                 chosen = inputs[1 % inputs.length];
               }
             } else {
-              // Attempt 3+: Round-robin shift based on attempt number
               const idx = (attemptNum - 1) % inputs.length;
               chosen = inputs[idx];
             }
