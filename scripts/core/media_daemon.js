@@ -34,18 +34,19 @@ async function setupMediaTab(task) {
   await evalTab(
     task.wsUrl,
     `(() => {
+      // Pause video and mute to eliminate CPU/GPU decoding load and save bandwidth.
+      // TMS Reading Clock ticks based on page session presence, NOT video currentTime.
       const v = document.querySelector('video');
       if (v) {
         v.muted = true;
-        v.playbackRate = 1.0;
-        v.play().catch(() => {});
+        v.pause();
       }
       if (!window.__kmuh_media_keeper) {
         window.__kmuh_media_keeper = setInterval(() => {
           const vid = document.querySelector('video');
-          if (vid && vid.paused && !vid.ended) {
+          if (vid && !vid.paused) {
             vid.muted = true;
-            vid.play().catch(() => {});
+            vid.pause();
           }
           document.querySelectorAll('.modal.in button, .bootbox button, .swal2-confirm').forEach(b => {
             if (/確定|確認|繼續/.test(b.innerText)) b.click();
@@ -82,9 +83,9 @@ async function checkAndSettleTask(task) {
     task.wsUrl,
     `(() => {
       const vid = document.querySelector('video');
-      if (vid && vid.paused && !vid.ended) {
+      if (vid && !vid.paused) {
         vid.muted = true;
-        vid.play().catch(() => {});
+        vid.pause();
       }
       const text = document.body.innerText || '';
       const match = text.match(/[\\u4e00-\\u9fa5]{2,4}:\\s*(\\d{1,2}:\\d{2}(?::\\d{2})?)/);
@@ -96,14 +97,15 @@ async function checkAndSettleTask(task) {
     })()`
   );
 
-  if (status && status.userTime) {
-    const elapsedSec = parseTimeToSeconds(status.userTime);
+  if (status) {
+    const elapsedSec = status.userTime ? parseTimeToSeconds(status.userTime) : 0;
+    const effectiveSec = Math.max(elapsedSec, status.videoTime || 0);
     console.log(
-      `[MediaDaemon] [${task.title || task.mediaId}] Read: ${status.userTime} (${elapsedSec}s / ${task.targetSec}s) | Video: ${status.videoTime}s | Paused: ${status.paused}`
+      `[MediaDaemon] [${task.title || task.mediaId}] Progress: ${effectiveSec}s / ${task.targetSec}s (header: ${status.userTime || 'N/A'}, video: ${status.videoTime}s) | Paused: ${status.paused}`
     );
 
-    if (elapsedSec >= task.targetSec) {
-      console.log(`🎯 [MediaDaemon] [${task.title || task.mediaId}] Target reached! Settling reading...`);
+    if (effectiveSec >= task.targetSec) {
+      console.log(`🎯 [MediaDaemon] [${task.title || task.mediaId}] Target reached (${effectiveSec}s >= ${task.targetSec}s)! Settling reading...`);
       await evalTab(
         task.wsUrl,
         `(() => {

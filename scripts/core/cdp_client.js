@@ -107,7 +107,7 @@ async function injectAntiBlur(wsUrl) {
 }
 
 async function openTab(url, waitMs = 3500, port = DEFAULT_PORT) {
-  const res = await fetch(`http://127.0.0.1:${port}/json/new?${encodeURIComponent(url)}`, {
+  const res = await fetch(`http://127.0.0.1:${port}/json/new?${url}`, {
     method: 'PUT'
   });
   const tab = await res.json();
