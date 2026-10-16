@@ -16,8 +16,10 @@ const { runMediaBatch, runMediaPool } = require('./media_daemon');
 const { completeSurvey } = require('./survey_engine');
 const { extractExamQuestions, submitExamAnswers, takeExamUntilPassed } = require('./exam_engine');
 
-// Keywords in course titles that indicate non-physician role restrictions
+// Keywords in course titles that indicate non-physician role restrictions or invalid modes
 const EXCLUDED_TITLE_KEYWORDS = [
+  '面授',
+  '視訊',
   '限NP',
   '專科護理師',
   '護理職類',
