@@ -209,8 +209,15 @@ async function selectMandatoryCoursesForProgram(programId) {
           !EXCLUDED_TITLE_KEYWORDS.some((kw) => c.title.includes(kw))
       );
 
-      // Prefer shortest hours/credits first, and already enrolled ('已加入') on tie
+      // 1. Prefer exact credit/hour match for remaining deficit (e.g. 1.5 credit course for 1.5 deficit)
+      // 2. Otherwise prefer shortest hours/credits first to accumulate via multiple short courses
+      // 3. On tie, prefer already enrolled ('已加入')
       eligible.sort((a, b) => {
+        const gainA = (audit.unit === '小時' ? a.hours : a.credits) || 0.5;
+        const gainB = (audit.unit === '小時' ? b.hours : b.credits) || 0.5;
+        const exactA = Math.abs(gainA - needed) < 0.01 ? 1 : 0;
+        const exactB = Math.abs(gainB - needed) < 0.01 ? 1 : 0;
+        if (exactA !== exactB) return exactB - exactA;
         if (a.hours !== b.hours) return a.hours - b.hours;
         if (a.status === '已加入' && b.status !== '已加入') return -1;
         if (b.status === '已加入' && a.status !== '已加入') return 1;
@@ -250,16 +257,33 @@ async function selectMandatoryCoursesForProgram(programId) {
   return { audit, selectedCourseIds };
 }
 
-async function runProgramEndToEnd(programId) {
-  const { audit, selectedCourseIds } = await selectMandatoryCoursesForProgram(programId);
+async function runProgramEndToEnd(programId, { maxRounds = 3 } = {}) {
+  let finalAudit = null;
 
-  if (selectedCourseIds.length === 0) {
-    console.log(`[CourseRunner] No remaining online mandatory courses needed for #${audit.programId}.`);
-    return audit;
+  for (let round = 1; round <= maxRounds; round++) {
+    console.log(`\n[CourseRunner] === Program #${programId} Closed-Loop Audit Round ${round}/${maxRounds} ===`);
+    const { audit, selectedCourseIds } = await selectMandatoryCoursesForProgram(programId);
+    finalAudit = audit;
+
+    if (selectedCourseIds.length === 0) {
+      console.log(
+        `[CourseRunner] 🎉 All online mandatory sub-categories for #${audit.programId} are 100% satisfied!`
+      );
+      return audit;
+    }
+
+    await runCoursesEndToEnd(selectedCourseIds);
+    finalAudit = await auditProgram(programId);
+
+    if (finalAudit.incompleteOnlineNodes.length === 0 && finalAudit.shortfall <= 0) {
+      console.log(
+        `[CourseRunner] 🎉 Verified after Round ${round}: all online mandatory sub-categories reached 100%!`
+      );
+      break;
+    }
   }
 
-  await runCoursesEndToEnd(selectedCourseIds);
-  return await auditProgram(programId);
+  return finalAudit;
 }
 
 async function runPendingCoursesEndToEnd() {
