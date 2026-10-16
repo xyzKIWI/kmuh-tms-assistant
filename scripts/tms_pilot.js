@@ -13,7 +13,8 @@ const {
   auditProgram,
   scanMyCourses,
   searchOnlineCourses,
-  enrollAndExtractCourse
+  enrollAndExtractCourse,
+  dropCourse
 } = require('./core/program_auditor');
 const {
   runCoursesEndToEnd,
@@ -103,6 +104,19 @@ async function main() {
       break;
     }
 
+    case 'drop': {
+      if (args.length === 0) {
+        console.error('Usage: node tms_pilot.js drop <courseId_or_url...>');
+        process.exit(1);
+      }
+      const results = [];
+      for (const cid of args) {
+        results.push(await dropCourse(cid));
+      }
+      console.log(JSON.stringify(results, null, 2));
+      break;
+    }
+
     case 'watch': {
       if (!arg1 || !arg2) {
         console.error('Usage: node tms_pilot.js watch <mediaId> <targetMinutes> [title]');
@@ -176,7 +190,8 @@ LLM Exam & Granular Unit Commands:
   exam-solve <examUrl> <answersJson>  Submit LLM-verified answers & cache 100% solution to Knowledge Base
   exam <examUrl> [answersJson]        Run exam with Knowledge Base / LLM answers or auto-retry loop until passed
   audit [programId]                   Audit curriculum progress & shortfall (supports 積分 & 小時)
-  enroll <courseId>                   Auto-enroll & extract unit-level status for a course
+  enroll <courseId>                   Auto-enroll & extract unit-level status (resolves dynamic AJAX URLs)
+  drop <courseId_or_url...>           Auto-drop expired or unwanted face-to-face courses
   watch <mediaId> <targetMin> [name]  Run Low-Power Pause-and-Clock background timer & auto-close tab
   poll <pollUrl>                      Auto-fill 5-star satisfaction survey & auto-close tab`);
       break;

@@ -243,34 +243,70 @@ async function enrollAndExtractCourse(courseIdOrUrl) {
           (text.includes('完成課程') && text.includes('重覆閱讀不會重覆取得時數')) ||
           text.includes('您已經通過此課程');
         const isMandatoryAssigned = text.includes('此為調訓課程');
+        const hasExpiredWarning =
+          text.includes('因部分課程內容已經超過通過期限') ||
+          text.includes('此課程將無法完成');
 
         // KMUH TMS renders course units inside .xtree-node (or table tr)
-        const containers = Array.from(document.querySelectorAll('.xtree-node, table tr'));
+        const containers = Array.from(document.querySelectorAll('#activityTree li.xtree-node, .xtree-node, table tr'));
         const units = [];
-        const seenHrefs = new Set();
+        const seenKeys = new Set();
 
         for (const el of containers) {
-          const a = Array.from(el.querySelectorAll('a')).find(
+          const directLink = Array.from(el.querySelectorAll('a')).find(
             link =>
               link.href &&
               /\\/(media|exam|poll)\\//.test(link.href) &&
               !link.href.includes('learning.xms.tw') &&
               !link.innerText.includes('活動相簿')
           );
-          if (!a || seenHrefs.has(a.href)) continue;
-          seenHrefs.add(a.href);
 
-          const rowText = el.innerText.replace(/\\s+/g, ' ').trim();
-          const reqMinMatch = rowText.match(/閱讀達\\s*(\\d+)\\s*分鐘/);
-          const requiredMin = reqMinMatch ? Number(reqMinMatch[1]) : 0;
-          const mediaMatch = a.href.match(/\\/media\\/(\\d+)/);
-          const type = a.href.includes('/media/')
-            ? 'media'
-            : a.href.includes('/poll/')
-            ? 'poll'
-            : 'exam';
+          const ajaxBtn = el.querySelector('a[id^="__button"]');
+          const targetAnchor = directLink || ajaxBtn;
+          if (!targetAnchor) continue;
+
+          // Extract AJAX checkPassPrevious endpoint if href is "#"
+          let ajaxUrl = null;
+          if (!directLink && ajaxBtn && (window.jQuery || window.$)) {
+            try {
+              const $ = window.jQuery || window.$;
+              const ev = $._data(ajaxBtn, 'events');
+              const fnStr = ev && ev.click && ev.click[0] ? ev.click[0].handler.toString() : '';
+              const m = fnStr.match(/['"](\\/ajax\\/sys\\.pages\\.course\\/checkPassPrevious\\/[^'"]+)['"]/);
+              if (m) ajaxUrl = m[1];
+            } catch (e) {}
+          }
 
           const cols = Array.from(el.querySelectorAll('.ext-col, td')).map(c => c.innerText.trim());
+          const rowText = (cols.join(' ') + ' ' + el.innerText).replace(/\\s+/g, ' ').trim();
+          const key = directLink ? directLink.href : (el.id || ajaxUrl || rowText);
+          if (!key || seenKeys.has(key)) continue;
+          seenKeys.add(key);
+
+          const reqMinMatch = rowText.match(/閱讀達\\s*(\\d+)\\s*分鐘/);
+          const requiredMin = reqMinMatch ? Number(reqMinMatch[1]) : 0;
+          const passScoreMatch = cols.join(' ').match(/(\\d{1,3})\\s*分及格/) || rowText.match(/(?:^|\\s)(\\d{1,3})\\s*分及格/);
+          const passScore = passScoreMatch ? Number(passScoreMatch[1]) : 70;
+
+          let type = 'unknown';
+          if (directLink) {
+            type = directLink.href.includes('/media/')
+              ? 'media'
+              : directLink.href.includes('/poll/')
+              ? 'poll'
+              : 'exam';
+          } else {
+            if (rowText.includes('閱讀達') || el.querySelector('.fa-play-circle, .fa-video, .fa-file-alt')) {
+              type = 'media';
+            } else if (rowText.includes('分及格') || rowText.includes('成績比重') || el.querySelector('.fa-check-square')) {
+              type = 'exam';
+            } else if (rowText.includes('須填寫') || rowText.includes('問卷') || rowText.includes('滿意度')) {
+              type = 'poll';
+            }
+          }
+          if (type === 'unknown') continue;
+
+          const mediaMatch = directLink ? directLink.href.match(/\\/media\\/(\\d+)/) : null;
           const hasCheckIcon = !!el.querySelector('.fa-check, .glyphicon-ok, .text-success');
           const passed =
             isCompleted ||
@@ -279,11 +315,15 @@ async function enrollAndExtractCourse(courseIdOrUrl) {
             rowText.includes('已完成');
 
           units.push({
-            title: a.innerText.trim(),
-            href: a.href,
+            nodeId: el.id || null,
+            btnId: ajaxBtn ? ajaxBtn.id : null,
+            ajaxUrl,
+            title: targetAnchor.innerText.trim(),
+            href: directLink ? directLink.href : null,
             type,
             mediaId: mediaMatch ? mediaMatch[1] : null,
             requiredMin,
+            passScore,
             passed,
             rowText
           });
@@ -294,6 +334,7 @@ async function enrollAndExtractCourse(courseIdOrUrl) {
           title: document.title.replace(/\\s*\\|.*$/, '').trim(),
           isCompleted,
           isMandatoryAssigned,
+          hasExpiredWarning,
           roleRestriction: ${JSON.stringify(preCheck?.roleRestriction || null)},
           isRestrictedOut: ${Boolean(preCheck?.isRestrictedOut)},
           enrolled: units.length > 0,
@@ -302,7 +343,81 @@ async function enrollAndExtractCourse(courseIdOrUrl) {
       })()`
     );
 
+    // Resolve any missing unit hrefs via in-page AJAX checkPassPrevious or click
+    if (details && Array.isArray(details.units)) {
+      for (const unit of details.units) {
+        if (!unit.href && unit.ajaxUrl) {
+          const resolvedUrl = await evalTab(
+            wsUrl,
+            `new Promise((resolve) => {
+              if (window.fs && typeof window.fs.post === 'function') {
+                window.fs.post('${unit.ajaxUrl}', {}, function(o) {
+                  if (o && o.status && o.data && o.data.url) {
+                    const u = o.data.url.startsWith('http') ? o.data.url : location.origin + o.data.url;
+                    resolve(u);
+                  } else {
+                    resolve(null);
+                  }
+                });
+              } else {
+                resolve(null);
+              }
+              setTimeout(() => resolve(null), 4000);
+            })`
+          );
+          if (resolvedUrl) {
+            unit.href = resolvedUrl;
+            const mMatch = resolvedUrl.match(/\/media\/(\d+)/);
+            if (mMatch) unit.mediaId = mMatch[1];
+          }
+        }
+      }
+    }
+
     return details;
+  } finally {
+    await closeTab(tab.id);
+  }
+}
+
+async function dropCourse(courseId) {
+  const cleanId = String(courseId).replace(/^.*\/course\//, '').replace(/\/.*$/, '').trim();
+  const tab = await openTab(`https://tms.kmuh.org.tw/course/${cleanId}`, 3500);
+  const wsUrl = tab.webSocketDebuggerUrl;
+  try {
+    const clicked = await evalTab(
+      wsUrl,
+      `(() => {
+        const dropBtn =
+          document.querySelector('a[role="drop-course"], .btn-drop, a[href*="drop"]') ||
+          Array.from(document.querySelectorAll('a, button')).find(b => (b.innerText || '').trim() === '退選');
+        if (dropBtn) {
+          dropBtn.click();
+          return true;
+        }
+        return false;
+      })()`
+    );
+    if (!clicked) {
+      return { courseId: cleanId, dropped: false, reason: 'no_drop_button' };
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+    const confirmed = await evalTab(
+      wsUrl,
+      `(() => {
+        const confirmBtn =
+          document.querySelector('#confirmDropCourseModal button.btn-primary, .bootbox .btn-primary, .modal.in .btn-primary') ||
+          Array.from(document.querySelectorAll('.modal button, .bootbox button')).find(b => (b.innerText || '').includes('確定'));
+        if (confirmBtn) {
+          confirmBtn.click();
+          return true;
+        }
+        return false;
+      })()`
+    );
+    await new Promise((r) => setTimeout(r, 2000));
+    console.log(`🗑️ [ProgramAuditor] Dropped course [${cleanId}] (Confirmed: ${Boolean(confirmed)})`);
+    return { courseId: cleanId, dropped: Boolean(confirmed) };
   } finally {
     await closeTab(tab.id);
   }
@@ -313,5 +428,6 @@ module.exports = {
   auditProgram,
   scanMyCourses,
   searchOnlineCourses,
-  enrollAndExtractCourse
+  enrollAndExtractCourse,
+  dropCourse
 };

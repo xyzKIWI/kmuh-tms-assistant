@@ -9,11 +9,13 @@ description: 100% Agent-Native automated assistant for KMUH TMS (Kaohsiung Medic
 This skill provides **100% Agent-Native** end-to-end automation for the Kaohsiung Medical University Hospital Training Management System (`https://tms.kmuh.org.tw/`).
 - **Agent-in-the-Loop True LLM Exam Solving**: Extracts clean question stems and options from `.kques-item` (`exam-extract`), allows the AI Agent (LLM) to reason over clinical/regulatory questions and inject verified 100% answers (`exam-solve`), caches verified answers to `data/exam_knowledge_base.json`, and includes an automatic retry loop (`while score < passScore`) until passed.
 - **Low-Power Pause-and-Clock Mode**: Pauses `<video>` decoding immediately upon entering a media tab (`vid.pause()`) while keeping the `ReadingClock` session heartbeat active—achieving **0% CPU/GPU video decode load and 0 network streaming bandwidth**.
+- **Dynamic AJAX Unit Resolution & Sequential Exam-Before-Survey**: Automatically resolves `href="#"` dynamic unit buttons via in-page `checkPassPrevious` AJAX calls, and strictly enforces solving **Exams BEFORE Surveys** to unlock sequential prerequisites.
+- **Auto-Drop Expired & Face-to-Face Courses**: Automatically detects and drops courses with expired sub-units (`因部分課程內容已經超過通過期限，此課程將無法完成`) or face-to-face (`面授`/`視訊`/`實體`) restrictions.
 - **Leaf-First Mandatory Sub-Category Resolution**: Parses `.xtree-node > .header .ext-col` columns and `必修不足 (requiredShortfall)`. Selects and accumulates one or multiple online courses from bottom-up (`0%` / `50%` leaf nodes first) and runs a Closed-Loop Re-Audit until 100% completion.
 
 ---
 
-## Standard Operating Workflow for AI Agents (V3.0)
+## Standard Operating Workflow for AI Agents (V3.1)
 
 Run from `C:\Users\User\.gemini\config\skills\kmuh-tms-assistant`:
 
@@ -32,7 +34,11 @@ Run from `C:\Users\User\.gemini\config\skills\kmuh-tms-assistant`:
    ```powershell
    node scripts/tms_pilot.js run-course <courseId_1> <courseId_2> ...
    ```
-4. **Complete All Pending & Mandatory Assigned Courses in `/course/mine` (`run-pending`)**:
+4. **Drop Unwanted Face-to-Face or Expired Courses (`drop`)**:
+   ```powershell
+   node scripts/tms_pilot.js drop <courseId_1> <courseId_2> ...
+   ```
+5. **Complete All Pending & Mandatory Assigned Courses in `/course/mine` (`run-pending`)**:
    ```powershell
    node scripts/tms_pilot.js run-pending
    ```

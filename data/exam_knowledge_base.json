@@ -1,7 +1,95 @@
 {
+  "15327": {
+    "examUrl": "https://tms.kmuh.org.tw/course/68673/exam/15327",
+    "answers": {
+      "kques_option_98459": "1",
+      "kques_option_98461": "1",
+      "kques_option_98462": "1",
+      "kques_option_98463": "0",
+      "kques_option_98466": "2"
+    },
+    "score": 100,
+    "updatedAt": "2026-10-16T20:10:55.993Z"
+  },
+  "17789": {
+    "examUrl": "https://tms.kmuh.org.tw/course/71229/exam/17789",
+    "answers": {
+      "kques_option_116764": "2",
+      "kques_option_116765": "3",
+      "kques_option_116766": "0",
+      "kques_option_116767": "0",
+      "kques_option_116768": "3"
+    },
+    "score": 100,
+    "updatedAt": "2026-10-16T22:17:28.212Z"
+  },
+  "20352": {
+    "examUrl": "https://tms.kmuh.org.tw/course/74424/exam/20352",
+    "answers": {
+      "kques_option_135359": "2",
+      "kques_option_135360": "1",
+      "kques_option_135361": "1",
+      "kques_option_135362": "1",
+      "kques_option_135363": "0"
+    },
+    "score": 100,
+    "updatedAt": "2026-10-16T22:18:34.768Z"
+  },
+  "25901": {
+    "examUrl": "https://tms.kmuh.org.tw/course/81298/exam/25901",
+    "answers": {
+      "kques_option_168952": "1",
+      "kques_option_168953": "1",
+      "kques_option_168954": "1",
+      "kques_option_168955": "1",
+      "kques_option_168956": "1"
+    },
+    "score": 100,
+    "updatedAt": "2026-10-16T20:05:52.267Z"
+  },
+  "26315": {
+    "examUrl": "https://tms.kmuh.org.tw/course/82246/exam/26315",
+    "answers": {
+      "kques_option_171531": "0",
+      "kques_option_171532": "1",
+      "kques_option_171533": "2",
+      "kques_option_171534": "3",
+      "kques_option_171535": "0",
+      "kques_option_171536": "1",
+      "kques_option_171537": "2",
+      "kques_option_171538": "3",
+      "kques_option_171539": "0",
+      "kques_option_171540": "1"
+    },
+    "score": 100,
+    "updatedAt": "2026-10-16T20:42:13.986Z"
+  },
+  "26478": {
+    "examUrl": "https://tms.kmuh.org.tw/course/82686/exam/26478",
+    "answers": {
+      "kques_option_173483": "1",
+      "kques_option_173484": "0",
+      "kques_option_173485": "1",
+      "kques_option_173486": "0",
+      "kques_option_173487": "0"
+    },
+    "score": 100,
+    "updatedAt": "2026-10-16T22:20:04.385Z"
+  },
+  "27764": {
+    "examUrl": "https://tms.kmuh.org.tw/course/84018/exam/27764",
+    "answers": {
+      "kques_option_179807": "0",
+      "kques_option_179808": "2",
+      "kques_option_179809": "3",
+      "kques_option_179810": "3",
+      "kques_option_179811": "1"
+    },
+    "score": 100,
+    "updatedAt": "2026-10-16T20:10:17.423Z"
+  },
   "28263": {
-    "courseId": "84446",
-    "title": "醫療機構使用生成式AI之風險",
+    "examUrl": "https://tms.kmuh.org.tw/course/84446/exam/28263",
     "answers": {
       "kques_option_183352": "0",
       "kques_option_183353": "1",
@@ -14,6 +102,7 @@
       "kques_option_183436": "0",
       "kques_option_183437": "1"
     },
-    "score": 100
+    "score": 100,
+    "updatedAt": "2026-10-16T20:47:47.083Z"
   }
 }

@@ -10,7 +10,8 @@ const {
   auditProgram,
   scanMyCourses,
   searchOnlineCourses,
-  enrollAndExtractCourse
+  enrollAndExtractCourse,
+  dropCourse
 } = require('./program_auditor');
 const { runMediaBatch, runMediaPool } = require('./media_daemon');
 const { completeSurvey } = require('./survey_engine');
@@ -20,6 +21,9 @@ const { extractExamQuestions, submitExamAnswers, takeExamUntilPassed } = require
 const EXCLUDED_TITLE_KEYWORDS = [
   '面授',
   '視訊',
+  '實體',
+  '實作',
+  '演習',
   '限NP',
   '專科護理師',
   '護理職類',
@@ -60,16 +64,26 @@ async function completeCourseAssessments(cid) {
   let info = await enrollAndExtractCourse(cid);
   if (info.isCompleted) return info;
 
-  for (const unit of info.units || []) {
-    if (unit.passed) continue;
-
-    if (unit.type === 'poll') {
-      console.log(`[CourseRunner] Submitting 5-star survey for [${cid}]: ${unit.href}`);
-      await completeSurvey(unit.href);
-    } else if (unit.type === 'exam') {
+  // Step 1: Always run Exams FIRST (passing exams unlocks sequential surveys)
+  const pendingExams = (info.units || []).filter((u) => !u.passed && u.type === 'exam' && u.href);
+  if (pendingExams.length > 0) {
+    for (const unit of pendingExams) {
       console.log(`[CourseRunner] Running exam until passed for [${cid}]: ${unit.href}`);
       await takeExamUntilPassed(unit.href);
     }
+    // Re-extract course so newly unlocked survey AJAX URLs resolve properly
+    info = await enrollAndExtractCourse(cid);
+    if (info.isCompleted) {
+      console.log(`🎯 [CourseRunner] Course [${cid}] ${info.title} is now 100% COMPLETED!`);
+      return info;
+    }
+  }
+
+  // Step 2: Run Surveys AFTER exams are passed
+  const pendingPolls = (info.units || []).filter((u) => !u.passed && u.type === 'poll' && u.href);
+  for (const unit of pendingPolls) {
+    console.log(`[CourseRunner] Submitting 5-star survey for [${cid}]: ${unit.href}`);
+    await completeSurvey(unit.href);
   }
 
   info = await enrollAndExtractCourse(cid);
@@ -106,6 +120,12 @@ async function runCoursesEndToEnd(courseIds, { maxConcurrency = 6 } = {}) {
 
     if (info.skipped || info.isCompleted) {
       console.log(`[CourseRunner] [${cid}] ${info.title || ''} already completed or skipped.`);
+      continue;
+    }
+
+    if (info.hasExpiredWarning && !info.isMandatoryAssigned) {
+      console.warn(`[CourseRunner] ⚠️ [${cid}] ${info.title} has expired sub-units and cannot be completed. Auto-dropping...`);
+      await dropCourse(cid);
       continue;
     }
 
@@ -248,6 +268,13 @@ async function selectMandatoryCoursesForProgram(programId) {
       for (const cand of eligible) {
         if (needed <= 0) break;
         const details = await enrollAndExtractCourse(cand.courseId);
+        if (details.hasExpiredWarning) {
+          console.warn(
+            `  ⚠️ [${cand.courseId}] ${cand.title} has expired sub-units (無法完成). Dropping and skipping...`
+          );
+          await dropCourse(cand.courseId);
+          continue;
+        }
         if (details.enrolled && !details.isCompleted && !details.isRestrictedOut) {
           selectedSet.add(cand.courseId);
           selectedCourseIds.push(cand.courseId);

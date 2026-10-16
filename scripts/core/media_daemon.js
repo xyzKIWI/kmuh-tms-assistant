@@ -34,12 +34,11 @@ async function setupMediaTab(task) {
   await evalTab(
     task.wsUrl,
     `(() => {
-      // Pause video and mute to eliminate CPU/GPU decoding load and save bandwidth.
-      // TMS Reading Clock ticks based on page session presence, NOT video currentTime.
+      // Low-Power Pause-and-Clock: pause video decoding (0% CPU/GPU, 0 bandwidth) while keeping ReadingClock active
       const v = document.querySelector('video');
       if (v) {
         v.muted = true;
-        v.pause();
+        if (!v.paused) v.pause();
       }
       if (!window.__kmuh_media_keeper) {
         window.__kmuh_media_keeper = setInterval(() => {
@@ -56,7 +55,7 @@ async function setupMediaTab(task) {
     })()`
   );
 
-  console.log(`[MediaDaemon] Launched [${task.courseId || ''}/${task.mediaId}] ${task.title || ''} (Target: ${task.targetMin}m)`);
+  console.log(`[MediaDaemon] Launched Low-Power [${task.courseId || ''}/${task.mediaId}] ${task.title || ''} (Target: ${task.targetMin}m)`);
 }
 
 async function checkAndSettleTask(task) {
@@ -82,17 +81,22 @@ async function checkAndSettleTask(task) {
   const status = await evalTab(
     task.wsUrl,
     `(() => {
+      if (document.body.innerText.includes('重覆開啟多個相同的視窗') || document.body.innerText.includes('--:--:--')) {
+        location.reload();
+        return { userTime: null, videoTime: 0, paused: true, reloaded: true };
+      }
       const vid = document.querySelector('video');
       if (vid && !vid.paused) {
         vid.muted = true;
         vid.pause();
       }
       const text = document.body.innerText || '';
-      const match = text.match(/[\\u4e00-\\u9fa5]{2,4}:\\s*(\\d{1,2}:\\d{2}(?::\\d{2})?)/);
+      const matches = Array.from(text.matchAll(/([\\u4e00-\\u9fa5]{2,4}):\\s*(\\d{1,2}:\\d{2}(?::\\d{2})?)/g));
+      const valid = matches.find(m => !/長度|總長/.test(m[1]));
       return {
-        userTime: match ? match[0] : null,
+        userTime: valid ? valid[0] : null,
         videoTime: Math.floor(vid?.currentTime || 0),
-        paused: !!vid?.paused
+        paused: vid ? vid.paused : true
       };
     })()`
   );
@@ -101,7 +105,7 @@ async function checkAndSettleTask(task) {
     const elapsedSec = status.userTime ? parseTimeToSeconds(status.userTime) : 0;
     const effectiveSec = Math.max(elapsedSec, status.videoTime || 0);
     console.log(
-      `[MediaDaemon] [${task.title || task.mediaId}] Progress: ${effectiveSec}s / ${task.targetSec}s (header: ${status.userTime || 'N/A'}, video: ${status.videoTime}s) | Paused: ${status.paused}`
+      `[MediaDaemon] [${task.title || task.mediaId}] Progress: ${effectiveSec}s / ${task.targetSec}s (header: ${status.userTime || 'N/A'}, video: ${status.videoTime}s) | LowPower: ${status.paused}`
     );
 
     if (effectiveSec >= task.targetSec) {
@@ -131,8 +135,14 @@ async function runMediaPool(tasks, maxConcurrency = 6, pollIntervalMs = 15000, o
 
   while (active.length < maxConcurrency && pending.length > 0) {
     const t = pending.shift();
-    await setupMediaTab(t);
-    active.push(t);
+    try {
+      await setupMediaTab(t);
+      active.push(t);
+    } catch (e) {
+      console.warn(`[MediaPool] Error setting up tab [${t.mediaId}], re-queuing:`, e.message);
+      pending.push(t);
+    }
+    if (pending.length > 0) await new Promise((r) => setTimeout(r, 2500));
   }
 
   while (active.length > 0) {
@@ -156,14 +166,20 @@ async function runMediaPool(tasks, maxConcurrency = 6, pollIntervalMs = 15000, o
         }
         if (pending.length > 0 && active.length < maxConcurrency) {
           const next = pending.shift();
-          await setupMediaTab(next);
-          active.push(next);
+          try {
+            await setupMediaTab(next);
+            active.push(next);
+          } catch (e) {
+            console.warn(`[MediaPool] Error setting up next tab [${next.mediaId}], re-queuing:`, e.message);
+            pending.push(next);
+          }
         }
       }
     }
   }
   console.log('🎉 [MediaDaemon] All media tasks in pool completed and closed!');
 }
+
 
 async function runMediaBatch(tasks, pollIntervalMs = 15000) {
   return await runMediaPool(tasks, tasks.length, pollIntervalMs);

@@ -52,7 +52,7 @@ async function closeTab(tabId, port = DEFAULT_PORT) {
   }
 }
 
-function sendCdpCommand(wsUrl, method, params = {}, timeoutMs = 8000) {
+function sendCdpCommand(wsUrl, method, params = {}, timeoutMs = 30000) {
   return new Promise((resolve, reject) => {
     let settled = false;
     const reqId = Math.floor(Math.random() * 1000000);
@@ -92,7 +92,7 @@ function sendCdpCommand(wsUrl, method, params = {}, timeoutMs = 8000) {
   });
 }
 
-async function evalTab(wsUrl, expression, timeoutMs = 8000) {
+async function evalTab(wsUrl, expression, timeoutMs = 30000) {
   try {
     const res = await sendCdpCommand(
       wsUrl,
