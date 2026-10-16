@@ -1,9 +1,9 @@
 ---
 name: kmuh-tms-assistant
-description: 100% Agent-Native automated assistant for KMUH TMS (Kaohsiung Medical University Hospital Training Management System, https://tms.kmuh.org.tw/) V3.0. Operates directly via Chrome DevTools Protocol (CDP port 9222) with zero browser extensions. Features Agent-in-the-Loop LLM exam solving with persistent knowledge base caching, Low-Power Pause-and-Clock media timer (0% CPU/GPU decode, 0 bandwidth), Leaf-First Mandatory Sub-Category (0%/50%) multi-course dynamic credit accumulation, 5-star surveys, and automatic tab closing.
+description: 100% Agent-Native automated assistant for KMUH TMS (Kaohsiung Medical University Hospital Training Management System, https://tms.kmuh.org.tw/) V3.1. Operates directly via Chrome DevTools Protocol (CDP port 9222) with zero browser extensions. Features Agent-in-the-Loop LLM exam solving with persistent knowledge base caching, dynamic AJAX unit URL resolution, sequential Exam-Before-Survey execution, Low-Power Pause-and-Clock media timer (0% CPU/GPU decode, 0 bandwidth), Leaf-First Mandatory Sub-Category (0%/50%) multi-course dynamic credit accumulation, auto-drop expired/face-to-face courses, and automatic tab closing.
 ---
 
-# KMUH TMS Assistant 3.0 (Agent-Native LLM Intelligence Edition)
+# KMUH TMS Assistant 3.1 (Agent-Native LLM Intelligence Edition)
 
 ## Overview
 This skill provides **100% Agent-Native** end-to-end automation for the Kaohsiung Medical University Hospital Training Management System (`https://tms.kmuh.org.tw/`).

@@ -1,10 +1,10 @@
-# KMUH TMS Assistant 3.0 (高醫體系員工學習管理系統 AI 原生全自動引擎 — LLM Intelligence Edition)
+# KMUH TMS Assistant 3.1 (高醫體系員工學習管理系統 AI 原生全自動引擎 — LLM Intelligence Edition)
 
-**100% Agent-Native、零瀏覽器外掛（No Tampermonkey Required）** 的高醫 TMS（`https://tms.kmuh.org.tw/`）V3 全自動引擎：整合 **Agent-in-the-Loop 大型語言模型（LLM）臨床與法規真實審題解題**、**極致低功耗閱讀時鐘（Pause-and-Clock）**、以及 **由下而上（Leaf-First）非整數／多學分必修項目動態湊分與閉環重驗**。
+**100% Agent-Native、零瀏覽器外掛（No Tampermonkey Required）** 的高醫 TMS（`https://tms.kmuh.org.tw/`）V3.1 全自動引擎：整合 **Agent-in-the-Loop 大型語言模型（LLM）臨床與法規真實審題解題**、**動態 AJAX 單元解鎖與先測驗後問卷防呆**、**極致低功耗閱讀時鐘（Pause-and-Clock）**、以及 **由下而上（Leaf-First）非整數／多學分必修項目動態湊分與閉環重驗**。
 
 ---
 
-## V3 核心進化與五大標準作業流程 (SOP)
+## V3.1 核心進化與七大標準作業流程 (SOP)
 
 1. **Agent-in-the-Loop 真實 LLM 臨床審題與知識庫快取 (`exam-extract` / `exam-solve` / `takeExamUntilPassed`)**：
    - **徹底告別純前端盲猜**：精準從 `.kques-item` 剝離 `.option-container`，萃取乾淨完整的考題題幹（`stem`）與選項結構化 JSON。
@@ -38,22 +38,23 @@
 
 ---
 
-## 模組架構 (V3.0)
+## 模組架構 (V3.1)
 
 ```text
 kmuh-tms-assistant/
-├── SKILL.md                          # AI Agent 技能定義與 V3.0 全場景標準作業程序 (SOP)
-├── README.md                         # V3.0 專案架構與使用說明文件
+├── SKILL.md                          # AI Agent 技能定義與 V3.1 全場景標準作業程序 (SOP)
+├── README.md                         # V3.1 專案架構與使用說明文件
 ├── data/
 │   └── exam_knowledge_base.json      # 經 LLM 驗證之 100% 滿分測驗解答持久化知識庫
 └── scripts/
-    ├── tms_pilot.js                  # 統一 CLI 主控入口 (v3.0)
+    ├── tms_pilot.js                  # 統一 CLI 主控入口 (v3.1)
+    ├── audit_summary.js              # 年度學程 (#10667 師培 & #10713 岡山) 快速總盤點工具
     ├── core/
     │   ├── cdp_client.js             # CDP WebSocket 通訊、原生防失焦注入與物理關頁
-    │   ├── program_auditor.js        # 學程 .ext-col 必修缺額精算 (積分/小時)、待修與調訓掃描
-    │   ├── course_runner.js          # 必修子項目 Leaf-First 動態湊分選課 + 閉環重驗編排器
+    │   ├── program_auditor.js        # 學程必修缺額精算、動態 AJAX 單元解析與退選 (dropCourse)
+    │   ├── course_runner.js          # Leaf-First 動態湊分、先測驗後問卷順序控制與過期課自動退選
     │   ├── media_daemon.js           # 極致低功耗 (vid.pause + ReadingClock) 多分頁並行掛機引擎
-    │   ├── exam_engine.js            # V3.0 Agent-in-the-Loop LLM 審題解題、知識庫快取與自動重考閉環
+    │   ├── exam_engine.js            # V3.1 Agent-in-the-Loop LLM 審題解題、知識庫快取與自動重考閉環
     │   └── survey_engine.js          # 課後問卷全自動 5 星非常滿意 + 醫師職類勾選送出
     └── legacy/                       # 舊版參考歸檔
 ```

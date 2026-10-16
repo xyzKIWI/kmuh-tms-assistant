@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * KMUH TMS Assistant 3.0 - Unified Agent-Native LLM Intelligence CLI Pilot
+ * KMUH TMS Assistant 3.1 - Unified Agent-Native LLM Intelligence CLI Pilot
  * Zero-Extension CDP Automation Entry Point
  * Features:
  * - Agent-in-the-Loop LLM Exam Reasoning & Persistent Knowledge Base (exam-extract / exam-solve)
@@ -176,7 +176,7 @@ async function main() {
     }
 
     default:
-      console.log(`KMUH TMS Assistant 3.0 (Agent-Native LLM Intelligence Edition)
+      console.log(`KMUH TMS Assistant 3.1 (Agent-Native LLM Intelligence Edition)
 High-Level Turnkey Commands:
   run-program <programId_or_url>      Auto-audit, pick online courses & complete any program (e.g. 10667, 10713)
   run-course <courseId_or_url...>     End-to-end complete one or more specific courses (videos + survey + exam)
