@@ -1,7 +1,7 @@
 /**
- * KMUH TMS Assistant 2.1 - End-to-End Course & Program Orchestrator
- * Chains auto-enrollment, parallel 1.0x media completion, 5-star survey submission,
- * and exam completion into a single turnkey pipeline for any course or program.
+ * KMUH TMS Assistant 2.2 - End-to-End Course & Program Orchestrator
+ * Implements Leaf-First Mandatory Sub-Category Course Selection (resolving every 0% / 50% node
+ * and propagating credits up to parent categories) + parallel 1.0x media playback + surveys + exams.
  */
 
 const { openTab, closeTab, evalTab } = require('./cdp_client');
@@ -17,7 +17,14 @@ const { completeSurvey } = require('./survey_engine');
 const { extractExamQuestions, submitExamAnswers } = require('./exam_engine');
 
 // Keywords in course titles that indicate non-physician role restrictions
-const EXCLUDED_TITLE_KEYWORDS = ['限NP', '專科護理師', '護理職類', '新進護理人員', '志工'];
+const EXCLUDED_TITLE_KEYWORDS = [
+  '限NP',
+  '專科護理師',
+  '護理職類',
+  '新進護理人員',
+  '志工',
+  '外包'
+];
 
 async function settleZeroMinuteMedia(mediaId, title) {
   const url = `https://tms.kmuh.org.tw/media/${mediaId}`;
@@ -47,7 +54,7 @@ async function settleZeroMinuteMedia(mediaId, title) {
   }
 }
 
-async function runCoursesEndToEnd(courseIds) {
+async function runCoursesEndToEnd(courseIds, { maxConcurrency = 6 } = {}) {
   const cleanIds = Array.from(
     new Set(
       courseIds
@@ -61,15 +68,15 @@ async function runCoursesEndToEnd(courseIds) {
     return [];
   }
 
-  console.log(`[CourseRunner] Starting end-to-end pipeline for ${cleanIds.length} course(s): ${cleanIds.join(', ')}`);
+  console.log(
+    `[CourseRunner] Starting end-to-end pipeline for ${cleanIds.length} course(s): ${cleanIds.join(', ')}`
+  );
 
   const mediaQueue = [];
-  const courseMap = new Map();
 
   // Phase 1: Enroll & inspect units
   for (const cid of cleanIds) {
     const info = await enrollAndExtractCourse(cid);
-    courseMap.set(cid, info);
 
     if (info.skipped || info.isCompleted) {
       console.log(`[CourseRunner] [${cid}] ${info.title || ''} already completed or skipped.`);
@@ -77,7 +84,11 @@ async function runCoursesEndToEnd(courseIds) {
     }
 
     if (!info.enrolled) {
-      console.warn(`[CourseRunner] ⚠️ [${cid}] ${info.title} could not enroll (restriction: ${info.roleRestriction || 'unknown'}).`);
+      console.warn(
+        `[CourseRunner] ⚠️ [${cid}] ${info.title} could not enroll (restriction: ${
+          info.roleRestriction || 'unknown'
+        }).`
+      );
       continue;
     }
 
@@ -92,17 +103,24 @@ async function runCoursesEndToEnd(courseIds) {
             courseId: cid,
             mediaId: unit.mediaId,
             targetMin: unit.requiredMin,
-            title: `[${cid}] ${info.title.slice(0, 18)}`
+            title: `[${cid}] ${info.title.slice(0, 16)}`
           });
         }
       }
     }
   }
 
-  // Phase 2: Parallel 1.0x media playback & auto-close
+  // Phase 2: Parallel 1.0x media playback & auto-close (in chunks of maxConcurrency)
   if (mediaQueue.length > 0) {
-    console.log(`[CourseRunner] Launching parallel MediaDaemon for ${mediaQueue.length} video unit(s)...`);
-    await runMediaBatch(mediaQueue);
+    for (let i = 0; i < mediaQueue.length; i += maxConcurrency) {
+      const batch = mediaQueue.slice(i, i + maxConcurrency);
+      console.log(
+        `[CourseRunner] Launching MediaDaemon batch (${i + 1}~${i + batch.length} of ${
+          mediaQueue.length
+        })...`
+      );
+      await runMediaBatch(batch);
+    }
   }
 
   // Phase 3: Complete unlocked surveys & exams
@@ -127,7 +145,6 @@ async function runCoursesEndToEnd(courseIds) {
       }
     }
 
-    // Final check
     info = await enrollAndExtractCourse(cid);
     results.push({
       courseId: cid,
@@ -140,65 +157,116 @@ async function runCoursesEndToEnd(courseIds) {
   return results;
 }
 
-async function runProgramEndToEnd(programId) {
+/**
+ * Selects eligible online courses for every incomplete (0% / 50%) mandatory sub-category
+ * in a program using Leaf-First traversal (so child credits propagate to parent categories).
+ */
+async function selectMandatoryCoursesForProgram(programId) {
   const audit = await auditProgram(programId);
   console.log(
     `[CourseRunner] Program #${audit.programId} (${audit.programName}): ` +
-      `${audit.recognized} / ${audit.totalRequired} ${audit.unit} (Shortfall: ${audit.shortfall})`
+      `Recognized=${audit.recognized}/${audit.totalRequired} ${audit.unit}, ` +
+      `TotalShortfall=${audit.shortfall}, MandatoryShortfall=${audit.requiredShortfall}`
   );
 
-  if (audit.completed && audit.shortfall <= 0) {
-    console.log(`[CourseRunner] 🎉 Program #${audit.programId} is already 100% completed!`);
-    return audit;
-  }
+  const selectedCourseIds = [];
+  const selectedSet = new Set();
+  const ancestorBonus = new Map(); // sectionNum -> extra credits from newly selected child courses
 
-  let needed = audit.shortfall > 0 ? audit.shortfall : audit.totalRequired - audit.recognized;
-  const selectedIds = [];
+  // Sort nodes deepest-first (e.g. "12.3.1" -> "5.1" -> "5") so leaf sub-categories are filled first
+  const sortedNodes = [...audit.nodes].sort((a, b) => {
+    const depthA = a.sectionNum ? a.sectionNum.split('.').length : 0;
+    const depthB = b.sectionNum ? b.sectionNum.split('.').length : 0;
+    return depthB - depthA;
+  });
 
-  // 1. Add any direct mandatory course links in the program
-  for (const node of audit.nodes) {
+  for (const node of sortedNodes) {
+    if (node.mode === '面授') continue;
+
+    const bonus = ancestorBonus.get(node.sectionNum) || 0;
+    let needed = Number((node.deficit - bonus).toFixed(2));
+    if (needed <= 0) continue;
+
     if (node.type === 'course' && node.courseId && !IGNORED_COURSE_IDS.has(node.courseId)) {
-      selectedIds.push(node.courseId);
+      if (!selectedSet.has(node.courseId)) {
+        selectedSet.add(node.courseId);
+        selectedCourseIds.push(node.courseId);
+      }
+      continue;
     }
-  }
 
-  // 2. Crawl category online courses to cover shortfall
-  const catNodes = audit.nodes.filter((n) => n.type === 'category' && n.categoryId);
-  for (const catNode of catNodes) {
-    if (needed <= 0) break;
-    const candidates = await searchOnlineCourses({ categoryId: catNode.categoryId, page: 1 });
-    const eligible = candidates
-      .filter(
+    if (node.type === 'category' && node.categoryId) {
+      console.log(
+        `[CourseRunner] Resolving mandatory node [${node.sectionNum} ${node.categoryName}] ` +
+          `(Deficit: ${node.deficit}, CoveredByChildren: ${bonus}, NetNeeded: ${needed} ${audit.unit})...`
+      );
+
+      const candidates = await searchOnlineCourses({ categoryId: node.categoryId, page: 1 });
+      const eligible = candidates.filter(
         (c) =>
           c.status !== '已通過' &&
+          !selectedSet.has(c.courseId) &&
           !EXCLUDED_TITLE_KEYWORDS.some((kw) => c.title.includes(kw))
-      )
-      .sort((a, b) => a.hours - b.hours);
+      );
 
-    for (const cand of eligible) {
-      if (needed <= 0) break;
-      const details = await enrollAndExtractCourse(cand.courseId);
-      if (details.enrolled && !details.isCompleted) {
-        selectedIds.push(cand.courseId);
-        const gain = audit.unit === '小時' ? cand.hours : cand.credits;
-        needed = Math.max(0, needed - (gain || 0.5));
-        console.log(
-          `[CourseRunner] Selected [${cand.courseId}] ${cand.title} (+${gain} ${audit.unit}, Remaining shortfall: ${needed})`
-        );
+      // Prefer shortest hours/credits first, and already enrolled ('已加入') on tie
+      eligible.sort((a, b) => {
+        if (a.hours !== b.hours) return a.hours - b.hours;
+        if (a.status === '已加入' && b.status !== '已加入') return -1;
+        if (b.status === '已加入' && a.status !== '已加入') return 1;
+        return 0;
+      });
+
+      let gainedTotal = 0;
+      for (const cand of eligible) {
+        if (needed <= 0) break;
+        const details = await enrollAndExtractCourse(cand.courseId);
+        if (details.enrolled && !details.isCompleted && !details.isRestrictedOut) {
+          selectedSet.add(cand.courseId);
+          selectedCourseIds.push(cand.courseId);
+          const gain = (audit.unit === '小時' ? cand.hours : cand.credits) || 0.5;
+          needed = Number(Math.max(0, needed - gain).toFixed(2));
+          gainedTotal += gain;
+          console.log(
+            `  -> Enrolled [${cand.courseId}] ${cand.title} (+${gain} ${audit.unit}, RequiredMin: ${
+              details.units.find((u) => u.type === 'media')?.requiredMin || 0
+            }m, Remaining node need: ${needed})`
+          );
+        }
+      }
+
+      // Propagate gainedTotal to all ancestor section numbers (e.g. "5.1" -> "5")
+      if (node.sectionNum && gainedTotal > 0) {
+        const parts = node.sectionNum.split('.');
+        while (parts.length > 1) {
+          parts.pop();
+          const parentSec = parts.join('.');
+          ancestorBonus.set(parentSec, (ancestorBonus.get(parentSec) || 0) + gainedTotal);
+        }
       }
     }
   }
 
-  if (selectedIds.length > 0) {
-    await runCoursesEndToEnd(selectedIds);
+  return { audit, selectedCourseIds };
+}
+
+async function runProgramEndToEnd(programId) {
+  const { audit, selectedCourseIds } = await selectMandatoryCoursesForProgram(programId);
+
+  if (selectedCourseIds.length === 0) {
+    console.log(`[CourseRunner] No remaining online mandatory courses needed for #${audit.programId}.`);
+    return audit;
   }
 
+  await runCoursesEndToEnd(selectedCourseIds);
   return await auditProgram(programId);
 }
 
 async function runPendingCoursesEndToEnd() {
   const { pendingCourses } = await scanMyCourses();
-  console.log(`[CourseRunner] Found ${pendingCourses.length} pending/assigned course(s) in /course/mine.`);
+  console.log(
+    `[CourseRunner] Found ${pendingCourses.length} pending/assigned course(s) in /course/mine.`
+  );
   const ids = pendingCourses.map((c) => c.courseId);
   return await runCoursesEndToEnd(ids);
 }
@@ -206,11 +274,14 @@ async function runPendingCoursesEndToEnd() {
 async function runKeywordCoursesEndToEnd(keyword) {
   const courses = await searchOnlineCourses({ keyword });
   const target = courses.filter((c) => c.status !== '已通過');
-  console.log(`[CourseRunner] Keyword "${keyword}" matched ${target.length} unfinished online course(s).`);
+  console.log(
+    `[CourseRunner] Keyword "${keyword}" matched ${target.length} unfinished online course(s).`
+  );
   return await runCoursesEndToEnd(target.map((c) => c.courseId));
 }
 
 module.exports = {
+  selectMandatoryCoursesForProgram,
   runCoursesEndToEnd,
   runProgramEndToEnd,
   runPendingCoursesEndToEnd,
