@@ -224,11 +224,14 @@ async function enrollAndExtractCourse(courseIdOrUrl) {
       await evalTab(
         wsUrl,
         `(() => {
-          const confirmBtn = document.querySelector('.bootbox .btn-primary, button[data-bb-handler="confirm"], .modal-footer .btn-primary');
-          if (confirmBtn) confirmBtn.click();
+          // Click only visible confirm buttons (avoid hidden #confirmDropCourseModal buttons)
+          const visibleConfirm = Array.from(
+            document.querySelectorAll('.bootbox .btn-primary, .modal.in .btn-primary, button[data-bb-handler="confirm"], .modal button.btn-primary')
+          ).find(b => b.offsetParent !== null && !String(b.id || '').includes('DropCourse'));
+          if (visibleConfirm) visibleConfirm.click();
         })()`
       );
-      await new Promise((r) => setTimeout(r, 2200));
+      await new Promise((r) => setTimeout(r, 2500));
       await navigateTab(wsUrl, courseUrl, 2500);
     }
 
@@ -241,16 +244,23 @@ async function enrollAndExtractCourse(courseIdOrUrl) {
           text.includes('您已經通過此課程');
         const isMandatoryAssigned = text.includes('此為調訓課程');
 
-        const rows = Array.from(document.querySelectorAll('table tr'));
+        // KMUH TMS renders course units inside .xtree-node (or table tr)
+        const containers = Array.from(document.querySelectorAll('.xtree-node, table tr'));
         const units = [];
+        const seenHrefs = new Set();
 
-        for (const tr of rows) {
-          const a = tr.querySelector('a');
-          if (!a || !a.href) continue;
-          if (a.href.includes('learning.xms.tw') || a.innerText.includes('活動相簿')) continue;
-          if (!/\\/(media|exam|poll)\\//.test(a.href)) continue;
+        for (const el of containers) {
+          const a = Array.from(el.querySelectorAll('a')).find(
+            link =>
+              link.href &&
+              /\\/(media|exam|poll)\\//.test(link.href) &&
+              !link.href.includes('learning.xms.tw') &&
+              !link.innerText.includes('活動相簿')
+          );
+          if (!a || seenHrefs.has(a.href)) continue;
+          seenHrefs.add(a.href);
 
-          const rowText = tr.innerText.replace(/\\s+/g, ' ').trim();
+          const rowText = el.innerText.replace(/\\s+/g, ' ').trim();
           const reqMinMatch = rowText.match(/閱讀達\\s*(\\d+)\\s*分鐘/);
           const requiredMin = reqMinMatch ? Number(reqMinMatch[1]) : 0;
           const mediaMatch = a.href.match(/\\/media\\/(\\d+)/);
@@ -260,13 +270,12 @@ async function enrollAndExtractCourse(courseIdOrUrl) {
             ? 'poll'
             : 'exam';
 
-          const tds = Array.from(tr.querySelectorAll('td')).map(d => d.innerText.trim());
-          const statusCol = tds[tds.length - 1] || '';
-          const achievementCol = tds[tds.length - 2] || '';
+          const cols = Array.from(el.querySelectorAll('.ext-col, td')).map(c => c.innerText.trim());
+          const hasCheckIcon = !!el.querySelector('.fa-check, .glyphicon-ok, .text-success');
           const passed =
             isCompleted ||
-            achievementCol.includes('已完成') ||
-            statusCol.includes('通過') ||
+            hasCheckIcon ||
+            cols.some(c => c.includes('已完成') || c === '通過') ||
             rowText.includes('已完成');
 
           units.push({

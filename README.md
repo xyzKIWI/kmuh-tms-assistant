@@ -1,20 +1,21 @@
-# KMUH TMS Assistant 2.1 (高醫體系員工學習管理系統 AI 原生全自動引擎)
+# KMUH TMS Assistant 2.2 (高醫體系員工學習管理系統 AI 原生全自動引擎)
 
-**100% Agent-Native、零瀏覽器外掛（No Tampermonkey Required）** 的高醫 TMS（`https://tms.kmuh.org.tw/`）全自動修課、學程盤點、調訓完訓、背景防失焦掛機、LLM 隨堂測驗滿分作答與滿意度問卷結案引擎。
+**100% Agent-Native、零瀏覽器外掛（No Tampermonkey Required）** 的高醫 TMS（`https://tms.kmuh.org.tw/`）全自動必修子項目盤點、精準選課、調訓完訓、背景防失焦掛機、LLM 隨堂測驗滿分作答與滿意度問卷結案引擎。
 
 ---
 
-## 核心特色 (v2.2 Universal Mandatory-First Architecture)
+## 核心標準作業流程：必修項目 (`0%` / `50%`) 自動選課與完訓 SOP
 
-- **零外掛依賴 (Zero Browser Extensions)**：無須安裝 Tampermonkey 或任何 `.user.js` 腳本，直接由 AI Agent 透過 Chrome DevTools Protocol (`CDP Port 9222`) 原生操控，並內建自動停用／移除頁面上殘留舊版插件面板之防護。
-- **由下而上「必修子項目 (`0%` / `50%`)」精準選課演算法 (`selectMandatoryCoursesForProgram`)**：
-  - 逐欄拆解 `.xtree-node > .header .ext-col`（修正系統 DOM 將「必修要求 `1` + 完成 `0` + `0%`」黏合成 `"100%"` 之陷阱），同時追蹤 **`必修不足 (requiredShortfall)`** 與 **`總稽核值不足 (shortfall)`**。
-  - 採用 **Leaf-First（子項目優先於父項目）** 策略：優先點入最底層未達標（`0%`／`50%`）的子分類（如 `5.1`～`5.4` 危機管理四子項、`6.1` 菸檳防制），自動選修無職類限制之線上課並將學分自動向上折抵父分類（如 `5. 危機管理`），絕不盲目亂選課。
-- **全場景通用編排 (`core/course_runner.js`)**：
-  1. **任意學程自動完訓 (`run-program`)**：支援「積分制」（如 `#10713` 院內繼續教育 30 積分）與「小時制」（如 `#10667` 師資培育 5 小時）等任何學程，自動過濾院區／職類限制並針對未完成必修項目挑課完訓。
-  2. **院方特殊調訓／關鍵字完訓 (`run-keyword` / `run-course`)**：如「家庭暴力暨性侵害防治」（`83249`、`83285`）等強制調訓課程，一鍵完成未讀影音、問卷與測驗。
-  3. **個人自選待修清單全清 (`run-pending`)**：你自己去網站點選報名放入「待修課程 (`/course/mine`)」的課，直接一鍵掃描並全自動跑完。
-- **多線並行 1.0x 合規播放 + 完訓自動關頁**：遵守 1.0x 原生心跳，達標秒點「結束閱讀 (`.fs-endReading`)」並透過 `GET /json/close/{id}` **物理關閉分頁**。
+高醫 TMS 的學程稽核同時看 **「總稽核值（總積分／總時數）」** 與 **「必修不足（各子分類獨立要求）」**。本引擎採用 **由下而上（Leaf-First）必修項目消弭演算法**：
+
+1. **逐欄精準拆解必修樹狀表 (`auditProgram`)**：
+   - 讀取學程頁面每一個 `.xtree-node > .header .ext-col`（修正系統 DOM 將「必修要求 `1` + 完成積分 `0` + 完成度 `0%`」無空白並排黏合成 `"100%"` 的陷阱），精準抓出每一個 **`0%` / `50%` 未達標必修子項目** 與右上角 **`必修不足`** 數值。
+2. **由下而上（子分類優先於父分類）自動點入選課 (`selectMandatoryCoursesForProgram`)**：
+   - 優先點入最底層 `0%`／`50%` 的必修子項目連結（例如先點入 `5.1 醫事爭議`、`5.2 輻射防護`、`5.3 預防暴力`、`5.4 氣候風險` 各選 1 分線上課，完成後這 4 分會自動歸戶填滿父項目 `5. 危機管理 4分`；點入 `6.1 菸檳防制` 修完 1 分自動填滿 `6. 衛生醫療法令`）。
+   - 自動過濾掉不符資格之角色限制課程（如 `僅 小港 角色`、`限NP`、`外包`、`志工`），並優先挑選時數最短之線上課自動點擊 `.js-signup` 報名。
+3. **多線並行 1.0x 完訓 + 問卷／測驗 + 自動關閉分頁 (`runCoursesEndToEnd`)**：
+   - 自動提取課程內 `.xtree-node` 各單元要求分鐘數，多分頁並行 1.0x 播放，達標秒點「結束閱讀 (`.fs-endReading`)」入帳並透過 CDP `GET /json/close/{id}` **物理關閉分頁**。
+   - 影片完成解鎖後，自動填妥 5 星滿意度問卷與隨堂測驗滿分交卷並關閉分頁。
 
 ---
 
@@ -25,11 +26,11 @@ kmuh-tms-assistant/
 ├── SKILL.md                      # AI Agent 技能定義與全場景標準作業程序 (SOP)
 ├── README.md                     # 專案說明文件
 └── scripts/
-    ├── tms_pilot.js              # 統一 CLI 主控入口
+    ├── tms_pilot.js              # 統一 CLI 主控入口 (v2.2)
     ├── core/
     │   ├── cdp_client.js         # CDP WebSocket 通訊、Page.addScriptToEvaluateOnNewDocument 防失焦與自動關頁
-    │   ├── program_auditor.js    # 通用學程缺額精算 (積分/小時)、待修與調訓掃描、關鍵字/分類線上課爬蟲
-    │   ├── course_runner.js      # 單課 / 多課 / 學程 / 關鍵字 一條龍全自動完訓編排器
+    │   ├── program_auditor.js    # 學程 .ext-col 必修缺額精算 (積分/小時)、待修與調訓掃描、分類線上課爬蟲
+    │   ├── course_runner.js      # 必修子項目 Leaf-First 自動選課 + 單課/多課/學程一條龍完訓編排器
     │   ├── media_daemon.js       # 多分頁並行 1.0x 原生心跳掛機、防閒置彈窗攔截、達標結算並關閉分頁
     │   ├── exam_engine.js        # 考題 DOM 抽取、LLM 推理答題、Bootbox 確認交卷與自動關頁
     │   └── survey_engine.js      # 課後問卷全自動 5 星非常滿意 + 醫師職類勾選送出與自動關頁
@@ -38,53 +39,50 @@ kmuh-tms-assistant/
 
 ---
 
-## 四大常見使用情境 (Quick Start)
+## 四大通用使用情境 (Quick Start)
 
-> **註**：以下指令中的學程編號（如 `10713`、`10667`）與課程編號（如 `83249`）皆可替換為**任何你要修的學程或課程網址／ID**。
+> **註**：以下 `<programId>` 與 `<courseId>` 皆為通用參數，可傳入**任何年度／非年度學程編號、院方調訓課程或自選課程**。
 
-### 前置準備：啟動瀏覽器偵錯埠 (Port 9222)
+### 1. 啟動瀏覽器偵錯埠 (Port 9222)
 啟動 Comet 或 Chrome 並登入 `https://tms.kmuh.org.tw/`：
 ```powershell
 "C:\Users\User\AppData\Local\Perplexity\Comet\Application\comet.exe" --remote-debugging-port=9222
 ```
 
-### 情境 A：跑完「任意年度／非年度學程」（如 `#10667` 師資培育學程、`#10713` 年度積分學程）
+### 2. 情境 A：自動完成「學程內所有 `0%` / `50%` 必修項目選課與完訓」
+自動掃描指定學程內所有未完成（`0%`／`50%`）的必修子分類，逐一點入該分類依缺額學分／時數選課報名，並一條龍跑完影片、問卷與測驗：
 ```powershell
-# 自動盤點學程缺額（支援積分制與小時制）、自動挑課報名、跑完影片+問卷+測驗並關閉分頁
+# 傳入任意學程 ID 或網址（自動處理「積分制」如 10713 與「小時制」如 10667）
+node scripts/tms_pilot.js run-program <programId>
+
+# 範例：
+node scripts/tms_pilot.js run-program 10713
 node scripts/tms_pilot.js run-program 10667
-node scripts/tms_pilot.js run-program https://tms.kmuh.org.tw/program/showMy/10713
 ```
 
-### 情境 B：跑完「特殊專案調訓課程」（如家暴／性侵防治、急救、感控調訓）
+### 3. 情境 B：自動完成「特殊專案調訓課程」（如家暴／性侵防治流程）
 ```powershell
-# 方式 1：直接指定調訓課程編號或網址（可一次給多門課同時並行跑！）
-node scripts/tms_pilot.js run-course 83249 83285
-
-# 方式 2：用關鍵字自動搜尋全院未完成的線上課並一條龍跑完
+# 方式 1：用關鍵字搜尋未完成的線上調訓課並一條龍跑完
 node scripts/tms_pilot.js run-keyword "家庭暴力"
+
+# 方式 2：直接傳入一門或多門課程編號／網址同時並行完訓
+node scripts/tms_pilot.js run-course <courseId_1> <courseId_2>
 ```
 
-### 情境 C：你自己先在網站上選好課，交給引擎把「待修清單」全部跑完
+### 4. 情境 C：你自己先選好課，交給引擎把「待修與被調訓清單」全部跑完
 ```powershell
-# 先查看目前帳號下「待修課程」與「被調訓必修課」清單
+# 盤點帳號下所有「待修課程」與「被調訓必修課」
 node scripts/tms_pilot.js scan
 
-# 一鍵把所有待修與被調訓課程全自動跑完（自動略過已完成單元）
+# 一鍵把 /course/mine 清單內所有未完成課程全自動跑完
 node scripts/tms_pilot.js run-pending
 ```
 
-### 情境 D：單一單元微調指令（進階／單步控制）
+### 5. 情境 D：單步稽核與微調指令
 ```powershell
-# 僅盤點學程狀態
-node scripts/tms_pilot.js audit 10667
+# 盤點學程各子項目 0%/50% 必修缺額明細
+node scripts/tms_pilot.js audit <programId>
 
-# 僅搜尋關鍵字或分類線上課程
-node scripts/tms_pilot.js search "性侵害"
-
-# 單獨掛機某支影片 (mediaId, 目標分鐘數, 顯示名稱)
-node scripts/tms_pilot.js watch 122234 66 "家暴通報知能"
-
-# 單獨填寫問卷或測驗
-node scripts/tms_pilot.js poll https://tms.kmuh.org.tw/course/83249/poll/13049
-node scripts/tms_pilot.js exam https://tms.kmuh.org.tw/course/80062/exam/xxxx
+# 搜尋特定關鍵字或分類 (categoryId) 下的線上課程
+node scripts/tms_pilot.js search <keyword> [categoryId]
 ```
